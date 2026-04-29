@@ -1,7 +1,9 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { useFlowStore } from '../../stores/flowStore'
+import NodeHeader from './NodeHeader.vue'
+import NodeAddButton from './NodeAddButton.vue'
 
 const props = defineProps({
   id: String,
@@ -10,18 +12,23 @@ const props = defineProps({
 })
 
 const store = useFlowStore()
-const editingUrl = ref(false)
-const localSrc = ref(props.data.src || '')
+const fileInputRef = ref(null)
 
-function confirmUrl() {
-  editingUrl.value = false
-  store.updateNodeData(props.id, { src: localSrc.value, outputValue: localSrc.value })
+const isLocalFile = computed(() => (props.data.src || '').startsWith('blob:'))
+const fileName = computed(() => props.data.fileName || '')
+
+function triggerUpload(e) {
+  e.stopPropagation()
+  fileInputRef.value?.click()
 }
 
-function onKeydown(e) {
-  if (e.key === 'Enter') confirmUrl()
-  if (e.key === 'Escape') editingUrl.value = false
-  e.stopPropagation()
+function onFileChange(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (isLocalFile.value) URL.revokeObjectURL(props.data.src)
+  const blobUrl = URL.createObjectURL(file)
+  store.updateNodeData(props.id, { src: blobUrl, outputValue: blobUrl, fileName: file.name })
+  e.target.value = ''
 }
 </script>
 
@@ -29,115 +36,104 @@ function onKeydown(e) {
   <div :class="['canvas-node', 'image-node', { selected }]">
     <Handle id="tl" type="target" :position="Position.Left" :style="{ top: '50%' }" />
 
-    <div class="node-header">
-      <span class="node-icon img-icon">🖼</span>
-      <span class="node-label">{{ data.label }}</span>
-      <button class="node-del" @click.stop="store.removeNodeById(id)" title="删除">×</button>
-    </div>
+    <NodeHeader :id="id" :label="data.label" current-type="imageNode" />
+
+    <input ref="fileInputRef" type="file" accept="image/*" class="hidden-file" @change="onFileChange" @click.stop />
 
     <div class="node-body img-body">
-      <template v-if="data.src && !editingUrl">
-        <img
-          :src="data.src"
-          :alt="data.alt || '图片'"
-          class="node-image"
-          @dblclick.stop="editingUrl = true; localSrc = data.src"
-          @error="e => e.target.classList.add('img-error')"
-        />
-      </template>
-      <template v-else>
-        <div v-if="!editingUrl" class="img-placeholder" @click.stop="editingUrl = true; localSrc = ''">
-          <div class="placeholder-icon">🖼</div>
-          <div class="placeholder-hint">点击输入图片 URL</div>
+      <!-- ── Has image ── -->
+      <template v-if="data.src">
+        <div class="img-preview-wrap">
+          <img :src="data.src" :alt="data.alt || '图片'" class="node-image" @error="e => e.target.classList.add('img-error')" />
+          <div class="img-overlay">
+            <button class="overlay-btn" @click.stop="triggerUpload" title="重新上传">📁 换图片</button>
+          </div>
         </div>
-        <div v-else class="url-input-wrap">
-          <input
-            v-model="localSrc"
-            class="url-input"
-            placeholder="https://example.com/image.jpg"
-            @keydown="onKeydown"
-            @blur="confirmUrl"
-            autofocus
-            @click.stop
-          />
-          <button class="url-confirm" @click.stop="confirmUrl">确认</button>
+        <div v-if="isLocalFile" class="file-badge">📁 {{ fileName || '本地文件' }}</div>
+      </template>
+
+      <!-- ── No image ── -->
+      <template v-else>
+        <div class="img-placeholder" @click.stop="triggerUpload">
+          <div class="placeholder-icon">🖼</div>
+          <div class="placeholder-hint">点击上传图片</div>
+          <div class="placeholder-sub">支持 JPG / PNG / GIF / WebP</div>
         </div>
       </template>
     </div>
 
     <Handle id="sr" type="source" :position="Position.Right" :style="{ top: '50%' }" />
+    <NodeAddButton :id="id" source-type="imageNode" />
   </div>
 </template>
 
 <style scoped>
-.image-node {
-  width: 240px;
-}
-.img-icon {
-  font-size: 14px;
-}
+.image-node { width: 240px; }
+.hidden-file { display: none; }
+
 .img-body {
   padding: 0 !important;
   overflow: hidden;
   border-radius: 0 0 10px 10px;
 }
-.node-image {
-  width: 100%;
-  height: 140px;
-  object-fit: cover;
-  display: block;
+
+/* preview */
+.img-preview-wrap { position: relative; line-height: 0; }
+.node-image { width: 100%; height: 148px; object-fit: cover; display: block; }
+.node-image.img-error { filter: grayscale(1) opacity(0.25); }
+
+.img-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+.img-preview-wrap:hover .img-overlay { opacity: 1; }
+
+.overlay-btn {
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 12px;
+  padding: 7px 14px;
   cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
 }
-.node-image.img-error {
-  filter: grayscale(1) opacity(0.3);
+.overlay-btn:hover { background: rgba(255,255,255,0.26); }
+
+.file-badge {
+  padding: 4px 10px;
+  background: #42b88318;
+  border-top: 1px solid #42b88330;
+  font-size: 10px;
+  color: #42b883;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+/* placeholder */
 .img-placeholder {
-  height: 120px;
+  height: 130px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  cursor: pointer;
   background: #0d0d1a;
-  border: 2px dashed #383854;
+  border: 2px dashed #2e2e50;
   border-radius: 0 0 10px 10px;
-  transition: border-color 0.2s;
-}
-.img-placeholder:hover {
-  border-color: #646cff;
-}
-.placeholder-icon {
-  font-size: 28px;
-  opacity: 0.4;
-}
-.placeholder-hint {
-  font-size: 11px;
-  color: #666;
-}
-.url-input-wrap {
-  display: flex;
-  gap: 6px;
-  padding: 8px;
-  background: #0d0d1a;
-}
-.url-input {
-  flex: 1;
-  background: #1a1a2e;
-  border: 1px solid #646cff66;
-  border-radius: 6px;
-  color: #e0e0f0;
-  font-size: 11px;
-  padding: 4px 8px;
-  outline: none;
-}
-.url-confirm {
-  padding: 4px 10px;
-  background: #646cff;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 11px;
   cursor: pointer;
+  transition: border-color 0.15s;
 }
+.img-placeholder:hover { border-color: #42b88366; }
+.placeholder-icon { font-size: 26px; opacity: 0.3; }
+.placeholder-hint { font-size: 12px; color: #666; }
+.placeholder-sub { font-size: 10px; color: #444; }
 </style>

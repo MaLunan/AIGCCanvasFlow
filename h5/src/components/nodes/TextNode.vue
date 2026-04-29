@@ -2,6 +2,8 @@
 import { ref, nextTick } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { useFlowStore } from '../../stores/flowStore'
+import NodeHeader from './NodeHeader.vue'
+import NodeAddButton from './NodeAddButton.vue'
 
 const props = defineProps({
   id: String,
@@ -42,11 +44,7 @@ function onKeydown(e) {
   <div :class="['canvas-node', 'text-node', { selected }]">
     <Handle id="tl" type="target" :position="Position.Left" :style="{ top: '50%' }" />
 
-    <div class="node-header">
-      <span class="node-icon text-icon">T</span>
-      <span class="node-label">{{ data.label }}</span>
-      <button class="node-del" @click.stop="store.removeNodeById(id)" title="删除">×</button>
-    </div>
+    <NodeHeader :id="id" :label="data.label" current-type="textNode" />
 
     <div class="node-body" @dblclick.stop="startEdit">
       <textarea
@@ -71,25 +69,12 @@ function onKeydown(e) {
 
     <Handle id="sr" type="source" :position="Position.Right" :style="{ top: '50%' }" />
     <Handle id="sb" type="source" :position="Position.Bottom" :style="{ left: '50%' }" />
+    <NodeAddButton :id="id" source-type="textNode" />
   </div>
 </template>
 
 <style scoped>
-.text-node {
-  width: 220px;
-}
-.text-icon {
-  background: #646cff22;
-  color: #a8b0ff;
-  font-weight: 700;
-  font-size: 12px;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-}
+.text-node { width: 220px; }
 .text-editor {
   width: 100%;
   background: #12121e;

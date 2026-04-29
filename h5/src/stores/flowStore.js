@@ -1,15 +1,27 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { applyNodeChanges, applyEdgeChanges } from '@vue-flow/core'
 
 let _uid = 0
 const uid = (prefix = 'node') => `${prefix}-${++_uid}-${Date.now()}`
 
+const TYPE_LABELS = {
+  textNode:  '文本节点',
+  imageNode: '图片节点',
+  videoNode: '视频节点',
+  noteNode:  '备注',
+  groupNode: '分组',
+}
+
+const NODE_WIDTHS = {
+  textNode: 220, imageNode: 240, videoNode: 280, noteNode: 180, groupNode: 0,
+}
+
 export const useFlowStore = defineStore('flow', () => {
   // ─── Canvas settings ────────────────────────────────────────────────
   const snapEnabled = ref(true)
-  const gridSize = ref(20)
-  const showGrid = ref(true)
+  const gridSize    = ref(20)
+  const showGrid    = ref(true)
 
   // ─── Initial nodes ───────────────────────────────────────────────────
   const nodes = ref([
@@ -62,11 +74,10 @@ export const useFlowStore = defineStore('flow', () => {
   const selectedNodes = computed(() => nodes.value.filter((n) => n.selected))
   const selectedEdges = computed(() => edges.value.filter((e) => e.selected))
 
-  // ─── VueFlow change handlers (controlled pattern) ────────────────────
+  // ─── VueFlow change handlers ──────────────────────────────────────────
   function handleNodesChange(changes) {
     nodes.value = applyNodeChanges(changes, nodes.value)
   }
-
   function handleEdgesChange(changes) {
     edges.value = applyEdgeChanges(changes, edges.value)
   }
@@ -119,7 +130,6 @@ export const useFlowStore = defineStore('flow', () => {
     nodes.value = nodes.value.map((n) =>
       n.id === id ? { ...n, data: { ...n.data, ...patch } } : n,
     )
-    // Propagate outputValue to connected edges labels
     if ('outputValue' in patch || 'content' in patch) {
       const val = patch.outputValue ?? patch.content ?? ''
       edges.value = edges.value.map((e) =>
@@ -147,8 +157,8 @@ export const useFlowStore = defineStore('flow', () => {
     edges.value = edges.value.filter((e) => !ids.has(e.source) && !ids.has(e.target))
   }
 
+  // ─── Edge ─────────────────────────────────────────────────────────────
   function addEdge(edge) {
-    // Prevent duplicate edges
     const exists = edges.value.find(
       (e) => e.source === edge.source && e.target === edge.target,
     )
@@ -166,7 +176,29 @@ export const useFlowStore = defineStore('flow', () => {
     ]
   }
 
-  // ─── Group selected nodes ────────────────────────────────────────────
+  // ─── Create next connected node (defined AFTER addEdge) ──────────────
+  function addConnectedNode(sourceId, newType) {
+    const source = nodes.value.find((n) => n.id === sourceId)
+    if (!source) return
+    const srcW = NODE_WIDTHS[source.type] ?? 220
+    const newPos = {
+      x: source.position.x + srcW + 80,
+      y: source.position.y,
+    }
+    const factory = nodeDefaults[newType]
+    if (!factory) return
+    const newNode = factory(newPos)
+    nodes.value = [...nodes.value, newNode]
+    addEdge({
+      id: `edge-${sourceId}-${newNode.id}-${Date.now()}`,
+      source: sourceId,
+      sourceHandle: 'sr',
+      target: newNode.id,
+      targetHandle: 'tl',
+    })
+  }
+
+  // ─── Group / ungroup ─────────────────────────────────────────────────
   function groupSelectedNodes() {
     const sel = selectedNodes.value.filter((n) => n.type !== 'groupNode' && !n.parentNode)
     if (sel.length < 2) return
@@ -178,20 +210,16 @@ export const useFlowStore = defineStore('flow', () => {
     const maxY = Math.max(...sel.map((n) => n.position.y + (n.dimensions?.height || 120))) + PAD
 
     const gid = uid('group')
-    const gw = maxX - minX
-    const gh = maxY - minY
-
     const groupNode = {
       id: gid,
       type: 'groupNode',
       position: { x: minX, y: minY },
-      style: { width: `${gw}px`, height: `${gh}px` },
+      style: { width: `${maxX - minX}px`, height: `${maxY - minY}px` },
       data: { label: '分组' },
       zIndex: -1,
       class: 'group-node-parent',
       selected: false,
     }
-
     const selIds = new Set(sel.map((n) => n.id))
     nodes.value = [
       groupNode,
@@ -227,6 +255,40 @@ export const useFlowStore = defineStore('flow', () => {
       })
   }
 
+  // ─── Change node type (remove → nextTick → re-insert) ────────────────
+  async function changeNodeType(id, newType) {
+    const idx = nodes.value.findIndex((n) => n.id === id)
+    if (idx === -1) return
+
+    const n = nodes.value[idx]
+    const { content = '', src = '', outputValue = '' } = n.data
+    const label = TYPE_LABELS[newType] ?? '节点'
+
+    let newData
+    switch (newType) {
+      case 'textNode':
+        newData = { label, content: content || src || '双击编辑内容...', outputValue }
+        break
+      case 'imageNode':
+        newData = { label, src, alt: '图片' }
+        break
+      case 'videoNode':
+        newData = { label, src, poster: '' }
+        break
+      case 'noteNode':
+        newData = { content: content || label, color: '#f5c542' }
+        break
+      default:
+        newData = n.data
+    }
+
+    const newNode = { ...n, type: newType, data: newData }
+    nodes.value = [...nodes.value.slice(0, idx), ...nodes.value.slice(idx + 1)]
+    await nextTick()
+    nodes.value = [...nodes.value.slice(0, idx), newNode, ...nodes.value.slice(idx)]
+  }
+
+  // ─── Exports ──────────────────────────────────────────────────────────
   return {
     nodes,
     edges,
@@ -243,7 +305,9 @@ export const useFlowStore = defineStore('flow', () => {
     removeNodeById,
     removeSelectedNodes,
     addEdge,
+    addConnectedNode,
     groupSelectedNodes,
     ungroupNodes,
+    changeNodeType,
   }
 })

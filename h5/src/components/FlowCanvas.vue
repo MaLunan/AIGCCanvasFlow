@@ -167,6 +167,13 @@ function onKeydown(e) {
         :delete-key-code="'Delete'"
         :selection-key-code="'Shift'"
         :multi-selection-key-code="'Meta'"
+        :pan-on-drag="true"
+        :pan-on-scroll="true"
+        pan-on-scroll-mode="free"
+        :zoom-on-scroll="false"
+        :zoom-on-pinch="true"
+        :zoom-on-double-click="false"
+        :prevent-scrolling="true"
         fit-view-on-init
         elevate-edges-on-select
         @nodes-change="store.handleNodesChange"
@@ -227,6 +234,8 @@ function onKeydown(e) {
   position: relative;
   overflow: hidden;
   background: #0b0b16;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 </style>
 
