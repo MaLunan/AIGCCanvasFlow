@@ -1,5 +1,5 @@
 <script setup>
-import { ref, markRaw, computed } from 'vue'
+import { ref, markRaw, computed, onMounted } from 'vue'
 import {
   VueFlow,
   useVueFlow,
@@ -57,10 +57,15 @@ onConnect((params) => {
   })
 })
 
-// ─── Fit view (exposed to Toolbar) ───────────────────────────────────────────
+// ─── Fit view ─────────────────────────────────────────────────────────────────
 function doFitView() {
   fitView({ padding: 0.15, duration: 400 })
 }
+
+onMounted(() => {
+  // 手动触发一次居中，避免 fit-view-on-init 在每次 nodes 变化时重新执行
+  setTimeout(() => fitView({ padding: 0.15 }), 50)
+})
 
 // ─── Drag-and-drop from toolbar ───────────────────────────────────────────────
 const canvasRef = ref(null)
@@ -139,9 +144,10 @@ function onCtxAction(action) {
 
 // ─── Keyboard shortcuts ───────────────────────────────────────────────────────
 function onKeydown(e) {
-  if ((e.target).tagName === 'INPUT' || (e.target).tagName === 'TEXTAREA') return
+  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return
   if (e.key === 'f' || e.key === 'F') doFitView()
   if (e.key === 'a' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); selectAll(true) }
+  if (e.key === 'Delete' || e.key === 'Backspace') store.removeSelectedNodes()
 }
 </script>
 
@@ -164,7 +170,7 @@ function onKeydown(e) {
         :default-zoom="1"
         :min-zoom="0.1"
         :max-zoom="4"
-        :delete-key-code="'Delete'"
+        :delete-key-code="['Delete', 'Backspace']"
         :selection-key-code="'Shift'"
         :multi-selection-key-code="'Meta'"
         :pan-on-drag="true"
@@ -174,7 +180,6 @@ function onKeydown(e) {
         :zoom-on-pinch="true"
         :zoom-on-double-click="false"
         :prevent-scrolling="true"
-        fit-view-on-init
         elevate-edges-on-select
         @nodes-change="store.handleNodesChange"
         @edges-change="store.handleEdgesChange"

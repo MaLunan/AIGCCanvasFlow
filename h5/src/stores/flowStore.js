@@ -62,7 +62,7 @@ export const useFlowStore = defineStore('flow', () => {
       source: 'text-1',
       target: 'image-1',
       animated: true,
-      type: 'smoothstep',
+      type: 'bezier',
       label: '',
       data: { value: null },
       style: { stroke: '#646cff', strokeWidth: 2 },
@@ -119,10 +119,15 @@ export const useFlowStore = defineStore('flow', () => {
     }),
   }
 
+  /** 只构造节点对象，不写入 nodes.value（供外部调用 vueflow.addNodes 使用）*/
+  function createNode(type, position) {
+    return nodeDefaults[type]?.(position) ?? null
+  }
+
   function addNodeOfType(type, position) {
-    const factory = nodeDefaults[type]
-    if (!factory) return
-    nodes.value = [...nodes.value, factory(position)]
+    const node = createNode(type, position)
+    if (!node) return
+    nodes.value = [...nodes.value, node]
   }
 
   // ─── Data updates ────────────────────────────────────────────────────
@@ -168,7 +173,7 @@ export const useFlowStore = defineStore('flow', () => {
       {
         ...edge,
         animated: true,
-        type: 'smoothstep',
+        type: 'bezier',
         style: { stroke: '#646cff', strokeWidth: 2 },
         markerEnd: { type: 'arrowclosed', color: '#646cff' },
         data: { value: null },
@@ -177,18 +182,22 @@ export const useFlowStore = defineStore('flow', () => {
   }
 
   // ─── Create next connected node (defined AFTER addEdge) ──────────────
-  function addConnectedNode(sourceId, newType) {
-    const source = nodes.value.find((n) => n.id === sourceId)
-    if (!source) return
-    const srcW = NODE_WIDTHS[source.type] ?? 220
-    const newPos = {
-      x: source.position.x + srcW + 80,
-      y: source.position.y,
-    }
+  function addConnectedNode(sourceId, newType, position, currentPositions) {
     const factory = nodeDefaults[newType]
     if (!factory) return
+    let newPos = position
+    if (!newPos) {
+      const source = nodes.value.find((n) => n.id === sourceId)
+      if (!source) return
+      newPos = { x: source.position.x + (NODE_WIDTHS[source.type] ?? 220) + 80, y: source.position.y }
+    }
     const newNode = factory(newPos)
-    nodes.value = [...nodes.value, newNode]
+    // 将 VueFlow 最新位置快照合并进 nodes 数组，与新节点一起原子更新，
+    // 避免 VueFlow 收到新 prop 数组后用旧坐标重置已拖拽节点
+    const base = currentPositions
+      ? nodes.value.map(n => currentPositions[n.id] ? { ...n, position: currentPositions[n.id] } : n)
+      : nodes.value
+    nodes.value = [...base, newNode]
     addEdge({
       id: `edge-${sourceId}-${newNode.id}-${Date.now()}`,
       source: sourceId,
@@ -299,6 +308,7 @@ export const useFlowStore = defineStore('flow', () => {
     selectedEdges,
     handleNodesChange,
     handleEdgesChange,
+    createNode,
     addNodeOfType,
     updateNodeData,
     updateEdgeData,
