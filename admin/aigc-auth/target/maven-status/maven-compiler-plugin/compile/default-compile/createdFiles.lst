@@ -1,0 +1,8 @@
+com/aigc/auth/dto/TokenResponse.class
+com/aigc/auth/service/impl/AuthServiceImpl.class
+com/aigc/auth/controller/AuthController.class
+com/aigc/auth/dto/LoginRequest.class
+com/aigc/auth/service/AuthService.class
+com/aigc/auth/dto/TokenResponse$TokenResponseBuilder.class
+com/aigc/auth/feign/UserFeignClient.class
+com/aigc/auth/AuthApplication.class

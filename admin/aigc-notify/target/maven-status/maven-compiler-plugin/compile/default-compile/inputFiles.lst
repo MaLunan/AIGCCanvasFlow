@@ -1,0 +1,11 @@
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/NotifyApplication.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/config/MybatisPlusConfig.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/config/WebSocketConfig.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/controller/MessageController.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/dto/MessageDTO.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/dto/SendMessageRequest.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/entity/Message.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/mapper/MessageMapper.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/service/MessageService.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/service/impl/MessageServiceImpl.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-notify/src/main/java/com/aigc/notify/ws/NotifyPushService.java

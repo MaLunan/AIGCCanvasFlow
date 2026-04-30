@@ -1,0 +1,9 @@
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-user/src/main/java/com/aigc/user/UserApplication.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-user/src/main/java/com/aigc/user/config/MybatisPlusConfig.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-user/src/main/java/com/aigc/user/controller/UserController.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-user/src/main/java/com/aigc/user/dto/UserCreateRequest.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-user/src/main/java/com/aigc/user/dto/UserVO.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-user/src/main/java/com/aigc/user/entity/User.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-user/src/main/java/com/aigc/user/mapper/UserMapper.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-user/src/main/java/com/aigc/user/service/UserService.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-user/src/main/java/com/aigc/user/service/impl/UserServiceImpl.java

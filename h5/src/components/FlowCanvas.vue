@@ -1,5 +1,6 @@
 <script setup>
-import { ref, markRaw, computed, onMounted } from 'vue'
+import { ref, markRaw, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import {
   VueFlow,
   useVueFlow,
@@ -18,6 +19,7 @@ import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 
 import { useFlowStore } from '../stores/flowStore'
+import { useProjectStore } from '../stores/projectStore'
 import Toolbar from './Toolbar.vue'
 import ContextMenu from './ContextMenu.vue'
 
@@ -36,8 +38,63 @@ const nodeTypes = {
   groupNode: markRaw(GroupNode),
 }
 
+const route = useRoute()
+const router = useRouter()
 const store = useFlowStore()
+const projectStore = useProjectStore()
 const { nodes, edges, snapEnabled, gridSize, showGrid } = storeToRefs(store)
+
+// ─── Project state ────────────────────────────────────────────────────────────
+const currentProjectId = ref(null)
+const projectName = ref('未命名项目')
+const editingName = ref(false)
+const nameInputRef = ref(null)
+// 'saved' | 'saving' | 'unsaved'
+const saveStatus = ref('saved')
+const saveStatusText = computed(() => {
+  if (saveStatus.value === 'saving') return '保存中...'
+  if (saveStatus.value === 'unsaved') return '未保存'
+  return '已保存'
+})
+
+function startEditName() {
+  editingName.value = true
+  setTimeout(() => nameInputRef.value?.select(), 0)
+}
+function commitName() {
+  editingName.value = false
+  if (currentProjectId.value) {
+    projectStore.renameProject(currentProjectId.value, projectName.value)
+  }
+}
+
+async function saveProject() {
+  if (!currentProjectId.value) return
+  const snapshot = store.getCanvasSnapshot()
+  // 空画布且从未保存过 → 删除该项目，不保存
+  const project = projectStore.getProject(currentProjectId.value)
+  if (snapshot.nodes.length === 0 && !project?.canvasData) {
+    await projectStore.deleteProject(currentProjectId.value)
+    return
+  }
+  saveStatus.value = 'saving'
+  try {
+    await projectStore.saveCanvas(currentProjectId.value, snapshot.nodes, snapshot.edges)
+    saveStatus.value = 'saved'
+  } catch (e) {
+    console.error('[FlowCanvas] saveProject failed', e)
+    saveStatus.value = 'unsaved'
+  }
+}
+
+async function exitCanvas() {
+  await saveProject()
+  router.push('/projects')
+}
+
+onBeforeRouteLeave(async () => {
+  await saveProject()
+})
 
 // ─── VueFlow instance ─────────────────────────────────────────────────────────
 const {
@@ -193,8 +250,44 @@ function doFitView() {
   fitView({ padding: 0.15, duration: 400 })
 }
 
-onMounted(() => {
-  setTimeout(() => fitView({ padding: 0.15 }), 50)
+// Mark unsaved when canvas changes (after initial load)
+let watchReady = false
+watch([nodes, edges], () => {
+  if (!watchReady) return
+  saveStatus.value = 'unsaved'
+}, { deep: true })
+
+async function loadProject(projectId) {
+  store.resetCanvas()
+  if (!projectId) {
+    const project = await projectStore.createProject('未命名项目')
+    currentProjectId.value = String(project.id)
+    projectName.value = project.name
+    router.replace({ path: '/canvas', query: { projectId: project.id } })
+    return
+  }
+  try {
+    const project = await projectStore.fetchProject(projectId)
+    currentProjectId.value = String(project.id)
+    projectName.value = project.name
+    if (project.canvasData) {
+      const data = typeof project.canvasData === 'string'
+        ? JSON.parse(project.canvasData)
+        : project.canvasData
+      store.loadCanvas(data)
+    }
+  } catch {
+    // 项目不存在，新建一个
+    const newProject = await projectStore.createProject('未命名项目')
+    currentProjectId.value = String(newProject.id)
+    projectName.value = newProject.name
+    router.replace({ path: '/canvas', query: { projectId: newProject.id } })
+  }
+}
+
+onMounted(async () => {
+  await loadProject(route.query.projectId)
+  setTimeout(() => { fitView({ padding: 0.15 }); watchReady = true }, 100)
 })
 
 // ─── Drag-and-drop from toolbar ───────────────────────────────────────────────
@@ -283,6 +376,32 @@ function onKeydown(e) {
 
 <template>
   <div class="app-shell" @keydown="onKeydown" tabindex="0">
+
+    <!-- ─── Project top bar ──────────────────────────────────── -->
+    <div class="canvas-topbar">
+      <button class="topbar-back" @click="exitCanvas">
+        <span>←</span> 项目
+      </button>
+      <div class="topbar-name-wrap">
+        <input
+          v-if="editingName"
+          ref="nameInputRef"
+          v-model="projectName"
+          class="topbar-name-input"
+          @blur="commitName"
+          @keydown.enter="commitName"
+          @keydown.escape="editingName = false"
+        />
+        <span v-else class="topbar-name" @click="startEditName" title="点击重命名">
+          {{ projectName }}
+        </span>
+      </div>
+      <span class="topbar-status" :class="saveStatus">{{ saveStatusText }}</span>
+      <button class="topbar-save" @click="saveProject">保存</button>
+    </div>
+
+    <!-- ─── Canvas body ──────────────────────────────────────── -->
+    <div class="canvas-body">
     <Toolbar @fit-view="doFitView" />
 
     <div
@@ -347,6 +466,7 @@ function onKeydown(e) {
         />
       </VueFlow>
     </div>
+    </div><!-- /canvas-body -->
 
     <ContextMenu
       v-bind="ctxMenu"
@@ -402,10 +522,104 @@ function onKeydown(e) {
 <style scoped>
 .app-shell {
   display: flex;
+  flex-direction: column;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
   outline: none;
+}
+
+/* ─── Top bar ─────────────────────────────────────────────── */
+.canvas-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  background: #111124;
+  border-bottom: 1px solid #2e2e50;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.topbar-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: none;
+  border: 1px solid #2e2e50;
+  border-radius: 6px;
+  color: #a0a0c0;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.topbar-back:hover { background: #ffffff0c; color: #e0e0ff; }
+
+.topbar-name-wrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+.topbar-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d0d0f0;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  transition: border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-name:hover { border-color: #2e2e50; background: #ffffff08; }
+.topbar-name-input {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d0d0f0;
+  background: #1a1a2e;
+  border: 1px solid #646cff;
+  border-radius: 5px;
+  padding: 4px 8px;
+  outline: none;
+  width: 220px;
+  text-align: center;
+  font-family: inherit;
+}
+
+.topbar-status {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.topbar-status.saved   { color: #42b883; }
+.topbar-status.unsaved { color: #f5c542; }
+.topbar-status.saving  { color: #a0a0c0; }
+
+.topbar-save {
+  padding: 5px 14px;
+  background: #646cff;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.topbar-save:hover { background: #7c82ff; }
+
+/* ─── Body (sidebar + canvas) ──────────────────────────────── */
+.canvas-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
 }
 
 .canvas-wrap {

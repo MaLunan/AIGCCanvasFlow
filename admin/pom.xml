@@ -16,6 +16,7 @@
         <module>aigc-auth</module>
         <module>aigc-user</module>
         <module>aigc-notify</module>
+        <module>aigc-canvas</module>
     </modules>
 
     <properties>

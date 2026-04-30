@@ -1,0 +1,15 @@
+com/aigc/notify/config/WebSocketConfig$2$1.class
+com/aigc/notify/entity/Message.class
+com/aigc/notify/service/impl/MessageServiceImpl.class
+com/aigc/notify/ws/NotifyPushService.class
+com/aigc/notify/NotifyApplication.class
+com/aigc/notify/config/WebSocketConfig.class
+com/aigc/notify/config/MybatisPlusConfig.class
+com/aigc/notify/dto/SendMessageRequest.class
+com/aigc/notify/dto/MessageDTO.class
+com/aigc/notify/config/WebSocketConfig$2.class
+com/aigc/notify/config/WebSocketConfig$1.class
+com/aigc/notify/mapper/MessageMapper.class
+com/aigc/notify/controller/MessageController.class
+com/aigc/notify/dto/MessageDTO$MessageDTOBuilder.class
+com/aigc/notify/service/MessageService.class

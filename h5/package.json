@@ -16,9 +16,11 @@
     "@vue-flow/core": "^1.48.2",
     "@vue-flow/minimap": "^1.5.4",
     "@vue-flow/node-resizer": "^1.5.1",
+    "axios": "^1.15.2",
     "pinia": "^3.0.4",
     "video.js": "^8.23.7",
-    "vue": "^3.5.12"
+    "vue": "^3.5.12",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.1.4",

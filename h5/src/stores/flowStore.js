@@ -23,52 +23,9 @@ export const useFlowStore = defineStore('flow', () => {
   const gridSize    = ref(20)
   const showGrid    = ref(true)
 
-  // ─── Initial nodes ───────────────────────────────────────────────────
-  const nodes = ref([
-    {
-      id: 'text-1',
-      type: 'textNode',
-      position: { x: 180, y: 120 },
-      data: { label: '文本节点', content: '这是一段示例文本内容，双击可以编辑。', outputValue: '' },
-    },
-    {
-      id: 'image-1',
-      type: 'imageNode',
-      position: { x: 500, y: 80 },
-      data: {
-        label: '图片节点',
-        src: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=240&fit=crop',
-        alt: '示例图片',
-      },
-    },
-    {
-      id: 'video-1',
-      type: 'videoNode',
-      position: { x: 500, y: 300 },
-      data: { label: '视频节点', src: '', poster: '' },
-    },
-    {
-      id: 'note-1',
-      type: 'noteNode',
-      position: { x: 180, y: 360 },
-      data: { content: '📌 这是一条备注\n可以记录想法或说明', color: '#f5c542' },
-    },
-  ])
-
-  // ─── Initial edges ───────────────────────────────────────────────────
-  const edges = ref([
-    {
-      id: 'e-text-image',
-      source: 'text-1',
-      target: 'image-1',
-      animated: true,
-      type: 'bezier',
-      label: '',
-      data: { value: null },
-      style: { stroke: '#646cff', strokeWidth: 2 },
-      markerEnd: { type: 'arrowclosed', color: '#646cff' },
-    },
-  ])
+  // ─── State ───────────────────────────────────────────────────────────
+  const nodes = ref([])
+  const edges = ref([])
 
   // ─── Computed ────────────────────────────────────────────────────────
   const selectedNodes = computed(() => nodes.value.filter((n) => n.selected))
@@ -298,6 +255,26 @@ export const useFlowStore = defineStore('flow', () => {
     nodes.value = [...nodes.value.slice(0, idx), newNode, ...nodes.value.slice(idx)]
   }
 
+  // ─── Canvas load / snapshot ──────────────────────────────────────────
+  /** 从保存的项目数据还原画布（在 FlowCanvas onMounted 前调用） */
+  function loadCanvas(canvasData) {
+    if (!canvasData) return
+    const data = typeof canvasData === 'string' ? JSON.parse(canvasData) : canvasData
+    nodes.value = data.nodes ?? []
+    edges.value = data.edges ?? []
+  }
+
+  /** 获取当前画布快照（用于保存） */
+  function getCanvasSnapshot() {
+    return { nodes: nodes.value, edges: edges.value }
+  }
+
+  /** 重置为空画布（新建项目时使用） */
+  function resetCanvas() {
+    nodes.value = []
+    edges.value = []
+  }
+
   // ─── Exports ──────────────────────────────────────────────────────────
   return {
     nodes,
@@ -320,5 +297,8 @@ export const useFlowStore = defineStore('flow', () => {
     groupSelectedNodes,
     ungroupNodes,
     changeNodeType,
+    loadCanvas,
+    getCanvasSnapshot,
+    resetCanvas,
   }
 })

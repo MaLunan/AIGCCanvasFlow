@@ -1,0 +1,3 @@
+com/aigc/gateway/filter/JwtAuthFilter.class
+com/aigc/gateway/GatewayApplication.class
+com/aigc/gateway/config/CorsConfig.class

@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: aigc-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+        namespace: public
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: aigc-auth
+          uri: lb://aigc-auth
+          predicates:
+            - Path=/auth/**
+        - id: aigc-user
+          uri: lb://aigc-user
+          predicates:
+            - Path=/user/**
+        - id: aigc-notify
+          uri: lb://aigc-notify
+          predicates:
+            - Path=/notify/**,/ws/**
+        - id: aigc-canvas
+          uri: lb://aigc-canvas
+          predicates:
+            - Path=/canvas/**
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+
+jwt:
+  secret: aigc-canvas-flow-jwt-secret-key-2024-minimum-32-chars
+
+logging:
+  level:
+    com.aigc: debug
+    org.springframework.cloud.gateway: info

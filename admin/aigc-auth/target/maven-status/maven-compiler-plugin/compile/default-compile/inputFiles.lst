@@ -1,0 +1,7 @@
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-auth/src/main/java/com/aigc/auth/AuthApplication.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-auth/src/main/java/com/aigc/auth/controller/AuthController.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-auth/src/main/java/com/aigc/auth/dto/LoginRequest.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-auth/src/main/java/com/aigc/auth/dto/TokenResponse.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-auth/src/main/java/com/aigc/auth/feign/UserFeignClient.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-auth/src/main/java/com/aigc/auth/service/AuthService.java
+/Users/malunan/Desktop/mycode/AIGCCanvasFlow/admin/aigc-auth/src/main/java/com/aigc/auth/service/impl/AuthServiceImpl.java
