@@ -265,7 +265,7 @@ export const useFlowStore = defineStore('flow', () => {
   }
 
   // ─── Change node type (remove → nextTick → re-insert) ────────────────
-  async function changeNodeType(id, newType) {
+  async function changeNodeType(id, newType, livePosition) {
     const idx = nodes.value.findIndex((n) => n.id === id)
     if (idx === -1) return
 
@@ -291,7 +291,8 @@ export const useFlowStore = defineStore('flow', () => {
         newData = n.data
     }
 
-    const newNode = { ...n, type: newType, data: newData }
+    const position = livePosition ?? n.position
+    const newNode = { ...n, type: newType, data: newData, position }
     nodes.value = [...nodes.value.slice(0, idx), ...nodes.value.slice(idx + 1)]
     await nextTick()
     nodes.value = [...nodes.value.slice(0, idx), newNode, ...nodes.value.slice(idx)]

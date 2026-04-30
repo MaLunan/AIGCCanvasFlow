@@ -68,7 +68,6 @@ function onKeydown(e) {
     </div>
 
     <Handle id="sr" type="source" :position="Position.Right" :style="{ top: '50%' }" />
-    <Handle id="sb" type="source" :position="Position.Bottom" :style="{ left: '50%' }" />
     <NodeAddButton :id="id" source-type="textNode" />
   </div>
 </template>

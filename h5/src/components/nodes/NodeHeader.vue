@@ -1,5 +1,6 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
+import { useVueFlow } from '@vue-flow/core'
 import { useFlowStore } from '../../stores/flowStore'
 
 const props = defineProps({
@@ -8,7 +9,35 @@ const props = defineProps({
   currentType: { type: String, required: true },
 })
 
+const editingLabel = ref(false)
+const labelInput = ref(null)
+const localLabel = ref(props.label)
+
+async function startLabelEdit(e) {
+  e.stopPropagation()
+  localLabel.value = props.label
+  editingLabel.value = true
+  await nextTick()
+  labelInput.value?.focus()
+  labelInput.value?.select()
+}
+
+function stopLabelEdit() {
+  if (!editingLabel.value) return
+  editingLabel.value = false
+  const val = localLabel.value.trim() || props.label
+  if (val !== props.label) {
+    store.updateNodeData(props.id, { label: val })
+  }
+}
+
+function onLabelKeydown(e) {
+  if (e.key === 'Enter' || e.key === 'Escape') stopLabelEdit()
+  e.stopPropagation()
+}
+
 const store = useFlowStore()
+const { findNode } = useVueFlow()
 
 const TYPE_OPTIONS = [
   { type: 'textNode',  icon: 'T',  label: '文本节点', color: '#646cff', bg: '#646cff22' },
@@ -49,7 +78,8 @@ function selectType(e, type) {
   e.stopPropagation()
   closePicker()
   if (type !== props.currentType) {
-    store.changeNodeType(props.id, type)
+    const liveNode = findNode(props.id)
+    store.changeNodeType(props.id, type, liveNode?.position)
   }
 }
 </script>
@@ -68,7 +98,17 @@ function selectType(e, type) {
       <span class="type-caret">▾</span>
     </button>
 
-    <span class="node-label">{{ label }}</span>
+    <input
+      v-if="editingLabel"
+      ref="labelInput"
+      v-model="localLabel"
+      class="node-label-input"
+      @blur="stopLabelEdit"
+      @keydown="onLabelKeydown"
+      @click.stop
+      @mousedown.stop
+    />
+    <span v-else class="node-label" @dblclick.stop="startLabelEdit" title="双击编辑名称">{{ label }}</span>
 
     <button class="node-del" @click.stop="store.removeNodeById(id)" title="删除节点">×</button>
   </div>
@@ -145,23 +185,44 @@ function selectType(e, type) {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  cursor: text;
+}
+.node-label-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e0e0f0;
+  background: #12121e;
+  border: 1px solid #646cff88;
+  border-radius: 4px;
+  padding: 1px 5px;
+  outline: none;
+  font-family: inherit;
 }
 
 .node-del {
   background: none;
-  border: none;
-  color: #444466;
+  border: 1px solid #3a3a5c;
+  color: #8888aa;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 700;
   line-height: 1;
-  padding: 0 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
   flex-shrink: 0;
 }
 .node-del:hover {
   color: #ff4d4d;
-  background: #ff4d4d18;
+  background: #ff4d4d22;
+  border-color: #ff4d4d66;
 }
 </style>
 

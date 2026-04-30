@@ -5,6 +5,7 @@ import {
   useVueFlow,
   MarkerType,
   Position,
+  SelectionMode,
 } from '@vue-flow/core'
 import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -41,21 +42,151 @@ const { nodes, edges, snapEnabled, gridSize, showGrid } = storeToRefs(store)
 // ─── VueFlow instance ─────────────────────────────────────────────────────────
 const {
   onConnect,
-  onNodeDoubleClick,
+  onConnectStart,
+  onConnectEnd,
   project,
   fitView,
   getSelectedNodes,
   getSelectedEdges,
   selectAll,
+  addNodes,
+  addEdges,
 } = useVueFlow()
 
 // ─── Connect handler ──────────────────────────────────────────────────────────
+// Normalize connections: only source→target allowed.
+// head-to-head: keep direction A→B, fix target handle to 'tl'
+// tail-to-tail: reverse direction to B→A, fix both handles
+let connectHandled = false
 onConnect((params) => {
+  connectHandled = true
+
+  let { source, sourceHandle, target, targetHandle } = params
+
+  const isSource = (id) => id === 'sr'  // head
+  const isTarget = (id) => id === 'tl'  // tail
+
+  if (isSource(sourceHandle) && isSource(targetHandle)) {
+    // head→head: auto-connect to the other's tail instead
+    targetHandle = 'tl'
+  } else if (isTarget(sourceHandle) && isTarget(targetHandle)) {
+    // tail→tail: reverse the direction
+    ;[source, target] = [target, source]
+    sourceHandle = 'sr'
+    targetHandle = 'tl'
+  }
+
   store.addEdge({
-    ...params,
-    id: `edge-${params.source}-${params.sourceHandle}-${params.target}-${params.targetHandle}-${Date.now()}`,
+    source, sourceHandle, target, targetHandle,
+    id: `edge-${source}-${sourceHandle}-${target}-${targetHandle}-${Date.now()}`,
   })
 })
+
+// ─── Edge-drop picker ─────────────────────────────────────────────────────────
+// picker state: set when picker is shown, read by createFromEdgeDrop
+const edgeDrop = ref({ visible: false, x: 0, y: 0, canvasPos: { x: 0, y: 0 } })
+let dropSource = null   // { nodeId, handleId } — plain object, not reactive
+
+const ghostLine = ref({ visible: false, x1: 0, y1: 0, x2: 0, y2: 0 })
+
+// drag source captured at connectStart, consumed at connectEnd
+let connectStartInfo = null  // { nodeId, handleId, hx, hy, startX, startY }
+
+const EDGE_DROP_TYPES = [
+  { type: 'textNode',  icon: 'T',  label: '文本节点', color: '#646cff' },
+  { type: 'imageNode', icon: '🖼', label: '图片节点', color: '#42b883' },
+  { type: 'videoNode', icon: '▶',  label: '视频节点', color: '#ff6b6b' },
+  { type: 'noteNode',  icon: '📝', label: '备注',     color: '#f5c542' },
+]
+
+function ghostLinePath(x1, y1, x2, y2) {
+  const dx = Math.abs(x2 - x1) * 0.5
+  return `M ${x1} ${y1} C ${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`
+}
+
+// VueFlow fires connectStart on mousedown on a handle — gives us nodeId/handleId directly
+onConnectStart(({ event, nodeId, handleId }) => {
+  connectHandled = false
+  // Capture handle screen center now (element is guaranteed in DOM at mousedown)
+  const handle = event?.target?.closest?.('.vue-flow__handle') ?? event?.target
+  const r = handle?.getBoundingClientRect()
+  connectStartInfo = {
+    nodeId,
+    handleId,
+    hx: r ? r.left + r.width / 2 : (event?.clientX ?? 0),
+    hy: r ? r.top + r.height / 2 : (event?.clientY ?? 0),
+    startX: event?.clientX ?? 0,
+    startY: event?.clientY ?? 0,
+  }
+})
+
+// VueFlow fires connectEnd on mouseup — AFTER connect (so connectHandled is already set)
+onConnectEnd((event) => {
+  const info = connectStartInfo
+  connectStartInfo = null
+
+  if (!info || !event) return
+
+  // Ignore if picker is already open
+  if (edgeDrop.value.visible) return
+
+  // A real connection was made — nothing to do
+  if (connectHandled) { connectHandled = false; return }
+
+  // Ignore tiny movements (simple click on a handle, not a drag)
+  const dx = (event.clientX ?? 0) - info.startX
+  const dy = (event.clientY ?? 0) - info.startY
+  if (Math.sqrt(dx * dx + dy * dy) < 8) return
+
+  // Released on another handle — VueFlow would have fired connect already
+  if (event.target?.closest?.('.vue-flow__handle')) return
+
+  const bounds = canvasRef.value?.getBoundingClientRect()
+  const canvasPos = project({
+    x: event.clientX - (bounds?.left ?? 0),
+    y: event.clientY - (bounds?.top ?? 0),
+  })
+
+  ghostLine.value = { visible: true, x1: info.hx, y1: info.hy, x2: event.clientX, y2: event.clientY }
+  dropSource = { nodeId: info.nodeId, handleId: info.handleId }
+  edgeDrop.value = { visible: true, x: event.clientX, y: event.clientY, canvasPos }
+})
+
+function closeEdgeDrop() {
+  edgeDrop.value.visible = false
+  ghostLine.value.visible = false
+  dropSource = null
+}
+
+function createFromEdgeDrop(e, type) {
+  e.stopPropagation()
+
+  // Snapshot everything before closing (closeEdgeDrop clears dropSource)
+  const src = dropSource
+  const canvasPos = { ...edgeDrop.value.canvasPos }
+  closeEdgeDrop()
+
+  const NEW_W = { textNode: 220, imageNode: 240, videoNode: 280, noteNode: 180 }[type] ?? 220
+  const newNode = store.createNode(type, { x: canvasPos.x - NEW_W / 2, y: canvasPos.y - 60 })
+  if (!newNode) return
+
+  addNodes([newNode])
+
+  if (src?.nodeId) {
+    addEdges([{
+      id: `edge-${src.nodeId}-${newNode.id}-${Date.now()}`,
+      source: src.nodeId,
+      sourceHandle: src.handleId ?? 'sr',
+      target: newNode.id,
+      targetHandle: 'tl',
+      animated: true,
+      type: 'bezier',
+      style: { stroke: '#646cff', strokeWidth: 2 },
+      markerEnd: { type: 'arrowclosed', color: '#646cff' },
+      data: { value: null },
+    }])
+  }
+}
 
 // ─── Fit view ─────────────────────────────────────────────────────────────────
 function doFitView() {
@@ -63,7 +194,6 @@ function doFitView() {
 }
 
 onMounted(() => {
-  // 手动触发一次居中，避免 fit-view-on-init 在每次 nodes 变化时重新执行
   setTimeout(() => fitView({ padding: 0.15 }), 50)
 })
 
@@ -172,6 +302,7 @@ function onKeydown(e) {
         :max-zoom="4"
         :delete-key-code="['Delete', 'Backspace']"
         :selection-key-code="'Shift'"
+        :selection-mode="SelectionMode.Partial"
         :multi-selection-key-code="'Meta'"
         :pan-on-drag="true"
         :pan-on-scroll="true"
@@ -222,6 +353,49 @@ function onKeydown(e) {
       @close="closeCtxMenu"
       @action="onCtxAction"
     />
+
+    <!-- Ghost connection line (SVG overlay, screen-space, no VueFlow) -->
+    <Teleport to="body">
+      <svg v-if="ghostLine.visible" class="ghost-line-svg" style="pointer-events:none">
+        <defs>
+          <marker id="ghost-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#646cff99" />
+          </marker>
+        </defs>
+        <path
+          :d="ghostLinePath(ghostLine.x1, ghostLine.y1, ghostLine.x2, ghostLine.y2)"
+          stroke="#646cff99"
+          stroke-width="2"
+          stroke-dasharray="6 4"
+          fill="none"
+          marker-end="url(#ghost-arrow)"
+        />
+      </svg>
+    </Teleport>
+
+    <!-- Edge-drop node picker -->
+    <Teleport to="body">
+      <template v-if="edgeDrop.visible">
+        <div class="edrop-backdrop" @click.stop="closeEdgeDrop" @mousedown.stop @pointerdown.stop />
+        <div
+          class="edrop-picker"
+          :style="{ top: edgeDrop.y + 'px', left: edgeDrop.x + 'px' }"
+          @click.stop @mousedown.stop
+        >
+          <div class="edrop-title">创建节点并连接</div>
+          <button
+            v-for="opt in EDGE_DROP_TYPES"
+            :key="opt.type"
+            class="edrop-item"
+            @click="createFromEdgeDrop($event, opt.type)"
+            @mousedown.stop
+          >
+            <span class="edrop-icon" :style="{ color: opt.color }">{{ opt.icon }}</span>
+            <span class="edrop-label">{{ opt.label }}</span>
+          </button>
+        </div>
+      </template>
+    </Teleport>
   </div>
 </template>
 
@@ -322,17 +496,17 @@ function onKeydown(e) {
 
 /* ─── VueFlow handle customization ─────────────────────────────────── */
 .vue-flow__handle {
-  width: 10px !important;
-  height: 10px !important;
+  width: 12px !important;
+  height: 12px !important;
   border-radius: 50% !important;
   background: #2e2e50 !important;
   border: 2px solid #646cff88 !important;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s !important;
+  transition: background 0.15s, border-color 0.15s !important;
+  /* NO transform/scale — CSS transform triggers lostpointercapture, breaking drag */
 }
 .vue-flow__handle:hover {
   background: #646cff !important;
   border-color: #a0aaff !important;
-  transform: scale(1.4) !important;
 }
 .vue-flow__handle-connecting {
   background: #42b883 !important;
@@ -400,4 +574,69 @@ function onKeydown(e) {
   background: #646cff !important;
   border-color: #a0aaff !important;
 }
+
+/* ─── Ghost line SVG overlay ────────────────────────────────────────── */
+.ghost-line-svg {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 8999;
+  overflow: visible;
+}
+
+/* ─── Edge-drop picker ──────────────────────────────────────────────── */
+.edrop-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+}
+.edrop-picker {
+  position: fixed;
+  z-index: 9001;
+  transform: translate(-50%, 8px);
+  background: #1a1a2e;
+  border: 1px solid #2e2e50;
+  border-radius: 10px;
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.65), 0 0 0 1px rgba(100,108,255,0.12);
+  animation: edrop-in 0.12s ease;
+}
+@keyframes edrop-in {
+  from { opacity: 0; transform: translate(-50%, 0px) scale(0.96); }
+  to   { opacity: 1; transform: translate(-50%, 8px) scale(1); }
+}
+.edrop-title {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #444466;
+  padding: 4px 8px 6px;
+}
+.edrop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #c0c0e0;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  margin-bottom: 2px;
+  font-family: inherit;
+}
+.edrop-item:last-child { margin-bottom: 0; }
+.edrop-item:hover {
+  background: #ffffff0c;
+  color: #e0e0f0;
+}
+.edrop-icon { width: 16px; text-align: center; font-size: 13px; flex-shrink: 0; }
+.edrop-label { flex: 1; font-size: 11px; }
 </style>

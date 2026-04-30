@@ -91,26 +91,28 @@ function create(e, type) {
   const newNode = store.createNode(type, pos)
   if (!newNode) return
 
-  // 直接注入 VueFlow 内部状态，完全不替换 nodes.value，
-  // 避免 VueFlow prop-reconciliation 把已拖拽节点弹回原位
-  addNodes([newNode])
+  // 把 VueFlow 内部的最新坐标（含拖拽后位置）一次性同步到 store，
+  // 再原子地追加新节点，避免 VueFlow prop-reconciliation 把已拖拽节点弹回原位
+  const vfSnapshot = getNodes.value
+  store.nodes = [
+    ...store.nodes.map((n) => {
+      const live = vfSnapshot.find((v) => v.id === n.id)
+      return live ? { ...n, position: { x: live.position.x, y: live.position.y } } : n
+    }),
+    newNode,
+  ]
 
   // 平滑移动视角到新节点中心，保持当前缩放
   const { zoom } = getViewport()
   setCenter(pos.x + NEW_W / 2, pos.y + NEW_H / 2, { zoom, duration: 350 })
 
-  addEdges([{
+  store.addEdge({
     id: `edge-${props.id}-${newNode.id}-${Date.now()}`,
     source: props.id,
     sourceHandle: 'sr',
     target: newNode.id,
     targetHandle: 'tl',
-    animated: true,
-    type: 'bezier',
-    style: { stroke: '#646cff', strokeWidth: 2 },
-    markerEnd: { type: 'arrowclosed', color: '#646cff' },
-    data: { value: null },
-  }])
+  })
 }
 </script>
 
