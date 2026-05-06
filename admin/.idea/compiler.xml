@@ -16,4 +16,15 @@
       </profile>
     </annotationProcessing>
   </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="aigc-auth" options="-parameters" />
+      <module name="aigc-canvas" options="-parameters" />
+      <module name="aigc-canvas-flow" options="-parameters" />
+      <module name="aigc-common" options="-parameters" />
+      <module name="aigc-gateway" options="-parameters" />
+      <module name="aigc-notify" options="-parameters" />
+      <module name="aigc-user" options="-parameters" />
+    </option>
+  </component>
 </project>

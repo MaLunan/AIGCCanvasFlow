@@ -40,7 +40,9 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     private static final List<String> WHITE_LIST = List.of(
             "/auth/login",
             "/auth/refresh",
-            "/actuator/**"
+            "/user/register",
+            "/actuator/**",
+            "/canvas/models/list"
     );
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();

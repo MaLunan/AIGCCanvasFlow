@@ -47,33 +47,39 @@ function stopEditLabel() {
   </div>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../../styles/variables' as *;
+
 .group-node {
   width: 100%;
   height: 100%;
-  background: rgba(100, 108, 255, 0.04);
-  border: 2px dashed #646cff44;
-  border-radius: 12px;
+  background: rgba($accent-primary, 0.04);
+  border: 2px dashed rgba($accent-primary, 0.27);
+  border-radius: $radius-lg;
   box-sizing: border-box;
   position: relative;
+
+  &.selected {
+    border-color: rgba($accent-primary, 0.6);
+    background: rgba($accent-primary, 0.07);
+  }
 }
-.group-node.selected {
-  border-color: #646cff99;
-  background: rgba(100, 108, 255, 0.07);
-}
+
 .group-header {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: rgba(100, 108, 255, 0.12);
+  background: rgba($accent-primary, 0.12);
   border-radius: 10px 10px 0 0;
-  border-bottom: 1px dashed #646cff33;
+  border-bottom: 1px dashed rgba($accent-primary, 0.2);
 }
+
 .group-icon {
   font-size: 14px;
   opacity: 0.7;
 }
+
 .group-label {
   font-size: 12px;
   font-weight: 600;
@@ -82,26 +88,29 @@ function stopEditLabel() {
   flex: 1;
   user-select: none;
 }
+
 .group-label-input {
   flex: 1;
   background: transparent;
   border: none;
-  border-bottom: 1px solid #646cff;
+  border-bottom: 1px solid $accent-primary;
   color: #a8b0ff;
   font-size: 12px;
   font-weight: 600;
   outline: none;
   padding: 0;
 }
+
 .group-ungroup {
   background: none;
   border: none;
-  color: #646cff88;
+  color: rgba($accent-primary, 0.53);
   cursor: pointer;
   font-size: 14px;
   padding: 0 2px;
   line-height: 1;
   transition: color 0.2s;
+
+  &:hover { color: $accent-primary; }
 }
-.group-ungroup:hover { color: #646cff; }
 </style>

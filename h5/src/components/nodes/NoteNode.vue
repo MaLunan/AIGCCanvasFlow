@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useFlowStore } from '../../stores/flowStore'
 import { NodeResizer } from '@vue-flow/node-resizer'
 import '@vue-flow/node-resizer/dist/style.css'
+import ScopeToggle from './ScopeToggle.vue'
 
 const props = defineProps({
   id: String,
@@ -54,6 +55,7 @@ function setColor(c) {
           @click.stop="setColor(c)"
         />
       </div>
+      <ScopeToggle :node-id="id" />
       <button class="node-del" @click.stop="store.removeNodeById(id)" title="删除">×</button>
     </div>
 
@@ -79,7 +81,9 @@ function setColor(c) {
   </div>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../../styles/variables' as *;
+
 .note-node {
   min-width: 160px;
   min-height: 100px;
@@ -88,24 +92,28 @@ function setColor(c) {
   border-radius: 4px 12px 12px 12px;
   border: 1.5px solid;
   padding: 8px 10px 20px;
-  box-shadow: 2px 4px 12px rgba(0,0,0,0.4);
+  box-shadow: 2px 4px 12px rgba(0, 0, 0, 0.4);
   position: relative;
   cursor: default;
   box-sizing: border-box;
+
+  &.selected {
+    box-shadow: 0 0 0 2px $accent-primary, 2px 4px 12px rgba(0, 0, 0, 0.4);
+  }
 }
-.note-node.selected {
-  box-shadow: 0 0 0 2px #646cff, 2px 4px 12px rgba(0,0,0,0.4);
-}
+
 .note-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 6px;
 }
+
 .color-dots {
   display: flex;
   gap: 4px;
 }
+
 .color-dot {
   width: 10px;
   height: 10px;
@@ -113,17 +121,20 @@ function setColor(c) {
   cursor: pointer;
   opacity: 0.7;
   transition: opacity 0.2s, transform 0.2s;
+
+  &:hover {
+    opacity: 1;
+    transform: scale(1.3);
+  }
 }
-.color-dot:hover {
-  opacity: 1;
-  transform: scale(1.3);
-}
+
 .note-content {
   font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
 }
+
 .note-editor {
   width: 100%;
   min-height: 60px;
@@ -136,6 +147,7 @@ function setColor(c) {
   resize: none;
   white-space: pre-wrap;
 }
+
 .note-fold {
   position: absolute;
   bottom: 0;

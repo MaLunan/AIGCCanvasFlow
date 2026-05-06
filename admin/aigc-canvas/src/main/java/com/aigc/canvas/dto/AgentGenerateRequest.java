@@ -3,6 +3,9 @@ package com.aigc.canvas.dto;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Data
 public class AgentGenerateRequest {
 
@@ -29,4 +32,10 @@ public class AgentGenerateRequest {
 
     /** 回调 Webhook URL（Agent 调用时传入） */
     private String webhookUrl;
+
+    /** 用户模型库中选用的模型 ID */
+    private Long libraryModelId;
+
+    /** 上游节点上下文，用于 AI 参考 */
+    private List<ContextItem> context = new ArrayList<>();
 }

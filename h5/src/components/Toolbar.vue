@@ -6,10 +6,12 @@ const store = useFlowStore()
 const { snapEnabled, showGrid, selectedNodes, nodes, edges } = storeToRefs(store)
 
 const nodeItems = [
-  { type: 'textNode',  icon: 'T',  label: '文本节点', color: '#646cff' },
-  { type: 'imageNode', icon: '🖼', label: '图片节点', color: '#42b883' },
-  { type: 'videoNode', icon: '▶', label: '视频节点', color: '#ff6b6b' },
-  { type: 'noteNode',  icon: '📝', label: '备注',     color: '#f5c542' },
+  { type: 'textNode',        icon: 'T',  label: '文本节点', color: '#646cff' },
+  { type: 'imageUploadNode', icon: '🖼', label: '图片上传', color: '#42b883' },
+  { type: 'imageGenNode',    icon: '🎨', label: 'AI 图片',  color: '#42b883' },
+  { type: 'videoUploadNode', icon: '▶',  label: '视频上传', color: '#ff6b6b' },
+  { type: 'videoGenNode',    icon: '🎬', label: 'AI 视频',  color: '#ff6b6b' },
+  { type: 'noteNode',        icon: '📝', label: '备注',     color: '#f5c542' },
 ]
 
 function onDragStart(e, type) {
@@ -123,12 +125,16 @@ const emit = defineEmits(['fit-view'])
   </aside>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../styles/variables' as *;
+
+$toolbar-border: #222238;
+
 .toolbar {
   width: 160px;
   flex-shrink: 0;
-  background: #13131f;
-  border-right: 1px solid #222238;
+  background: $bg-canvas;
+  border-right: 1px solid $toolbar-border;
   display: flex;
   flex-direction: column;
   padding: 12px 0;
@@ -142,17 +148,19 @@ const emit = defineEmits(['fit-view'])
   align-items: center;
   gap: 8px;
   padding: 0 12px 12px;
-  border-bottom: 1px solid #222238;
+  border-bottom: 1px solid $toolbar-border;
   margin-bottom: 10px;
 }
+
 .logo-icon {
   font-size: 20px;
-  color: #646cff;
+  color: $accent-primary;
 }
+
 .logo-text {
   font-size: 14px;
   font-weight: 700;
-  color: #e0e0f0;
+  color: $text-primary;
   letter-spacing: 0.5px;
 }
 
@@ -179,27 +187,32 @@ const emit = defineEmits(['fit-view'])
   align-items: center;
   gap: 8px;
   padding: 7px 8px;
-  border-radius: 8px;
+  border-radius: $radius-md;
   cursor: grab;
   background: #1a1a2e;
-  border: 1px solid #222238;
+  border: 1px solid $toolbar-border;
   transition: background 0.15s, border-color 0.15s;
+
+  &:hover {
+    background: #222240;
+    border-color: rgba($accent-primary, 0.27);
+  }
+
+  &:active { cursor: grabbing; }
 }
-.node-item:hover {
-  background: #222240;
-  border-color: #646cff44;
-}
-.node-item:active { cursor: grabbing; }
+
 .item-icon {
   font-size: 14px;
   width: 18px;
   text-align: center;
 }
+
 .item-label {
   font-size: 11px;
   color: #c0c0e0;
   flex: 1;
 }
+
 .drag-hint {
   font-size: 12px;
   color: #444;
@@ -208,7 +221,7 @@ const emit = defineEmits(['fit-view'])
 
 .divider {
   height: 1px;
-  background: #222238;
+  background: $toolbar-border;
   margin: 8px 0;
 }
 
@@ -219,15 +232,17 @@ const emit = defineEmits(['fit-view'])
   gap: 4px;
   margin-bottom: 4px;
 }
+
 .toggle-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 4px 4px 4px 6px;
   font-size: 11px;
-  color: #a0a0c0;
+  color: $text-secondary;
   cursor: pointer;
 }
+
 .toggle-btn {
   font-size: 9px;
   padding: 2px 6px;
@@ -237,12 +252,13 @@ const emit = defineEmits(['fit-view'])
   color: #666;
   cursor: pointer;
   font-weight: 600;
-  transition: all 0.2s;
-}
-.toggle-btn.active {
-  background: #646cff22;
-  border-color: #646cff;
-  color: #a0aaff;
+  transition: $transition-normal;
+
+  &.active {
+    background: rgba($accent-primary, 0.13);
+    border-color: $accent-primary;
+    color: #a0aaff;
+  }
 }
 
 .action-list {
@@ -252,37 +268,42 @@ const emit = defineEmits(['fit-view'])
   gap: 4px;
   margin-bottom: 4px;
 }
+
 .action-btn {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
   border-radius: 7px;
-  border: 1px solid #222238;
+  border: 1px solid $toolbar-border;
   background: #1a1a2e;
   color: #c0c0e0;
   font-size: 11px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: $transition-fast;
   text-align: left;
-}
-.action-btn:hover:not(:disabled) {
-  background: #222240;
-  border-color: #646cff44;
-  color: #e0e0f0;
-}
-.action-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.group-btn:not(:disabled):hover {
-  border-color: #42b88344;
-  color: #42b883;
-}
-.danger-btn:not(:disabled):hover {
-  border-color: #ff4d4d44;
-  color: #ff4d4d;
-  background: #1f1010;
+
+  &:hover:not(:disabled) {
+    background: #222240;
+    border-color: rgba($accent-primary, 0.27);
+    color: $text-primary;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  &.group-btn:not(:disabled):hover {
+    border-color: rgba($accent-green, 0.27);
+    color: $accent-green;
+  }
+
+  &.danger-btn:not(:disabled):hover {
+    border-color: rgba(#ff4d4d, 0.27);
+    color: #ff4d4d;
+    background: #1f1010;
+  }
 }
 
 .stats {
@@ -291,13 +312,15 @@ const emit = defineEmits(['fit-view'])
   flex-direction: column;
   gap: 3px;
 }
+
 .stat-row {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
 }
+
 .stat-label { color: #555578; }
-.stat-val { color: #a0a0c0; font-weight: 600; }
+.stat-val { color: $text-secondary; font-weight: 600; }
 
 .hints {
   padding: 0 10px;
@@ -305,13 +328,15 @@ const emit = defineEmits(['fit-view'])
   flex-direction: column;
   gap: 3px;
 }
+
 .hint-row {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 10px;
-  color: #444466;
+  color: $text-dim;
 }
+
 kbd {
   background: #1a1a2e;
   border: 1px solid #333;

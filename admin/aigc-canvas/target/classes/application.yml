@@ -11,7 +11,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/aigc_canvas?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
-    password: root
+    password: 12345678
     driver-class-name: com.mysql.cj.jdbc.Driver
   servlet:
     multipart:
@@ -38,6 +38,15 @@ springdoc:
     operations-sorter: alpha
   api-docs:
     path: /v3/api-docs
+
+snowflake:
+  worker-id: 1   # 节点 ID，多实例部署时每个实例设置不同值（0-31）
+
+langchain:
+  base-url: http://localhost:8000
+  # 生图/生视频任务超时（毫秒）
+  read-timeout: 120000
+  connect-timeout: 5000
 
 logging:
   level:

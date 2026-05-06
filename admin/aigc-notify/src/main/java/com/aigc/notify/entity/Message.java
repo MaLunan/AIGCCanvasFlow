@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("t_message")
 public class Message {
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
     /** 接收者 userId */
     private Long receiverId;

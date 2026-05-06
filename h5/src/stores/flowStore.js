@@ -1,20 +1,30 @@
 import { defineStore } from 'pinia'
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed } from 'vue'
 import { applyNodeChanges, applyEdgeChanges } from '@vue-flow/core'
 
 let _uid = 0
 const uid = (prefix = 'node') => `${prefix}-${++_uid}-${Date.now()}`
 
 const TYPE_LABELS = {
-  textNode:  '文本节点',
+  textNode:        '文本节点',
+  imageUploadNode: '图片上传',
+  imageGenNode:    'AI 图片',
+  videoUploadNode: '视频上传',
+  videoGenNode:    'AI 视频',
+  noteNode:        '备注',
+  groupNode:       '分组',
+  // legacy
   imageNode: '图片节点',
   videoNode: '视频节点',
-  noteNode:  '备注',
-  groupNode: '分组',
 }
 
 const NODE_WIDTHS = {
-  textNode: 220, imageNode: 240, videoNode: 280, noteNode: 180, groupNode: 0,
+  textNode: 220,
+  imageUploadNode: 240, imageGenNode: 240,
+  videoUploadNode: 280, videoGenNode: 280,
+  noteNode: 180, groupNode: 0,
+  // legacy
+  imageNode: 240, videoNode: 280,
 }
 
 export const useFlowStore = defineStore('flow', () => {
@@ -48,16 +58,28 @@ export const useFlowStore = defineStore('flow', () => {
       data: { label: '文本节点', content: '双击编辑内容...', outputValue: '' },
     }),
     imageNode: (pos) => ({
-      id: uid('image'),
-      type: 'imageNode',
-      position: pos,
+      id: uid('image'), type: 'imageNode', position: pos,
       data: { label: '图片节点', src: '', alt: '图片' },
     }),
+    imageUploadNode: (pos) => ({
+      id: uid('image'), type: 'imageUploadNode', position: pos,
+      data: { label: '图片上传', src: '', alt: '图片' },
+    }),
+    imageGenNode: (pos) => ({
+      id: uid('image'), type: 'imageGenNode', position: pos,
+      data: { label: 'AI 图片', src: '', alt: '图片' },
+    }),
     videoNode: (pos) => ({
-      id: uid('video'),
-      type: 'videoNode',
-      position: pos,
+      id: uid('video'), type: 'videoNode', position: pos,
       data: { label: '视频节点', src: '', poster: '' },
+    }),
+    videoUploadNode: (pos) => ({
+      id: uid('video'), type: 'videoUploadNode', position: pos,
+      data: { label: '视频上传', src: '', poster: '' },
+    }),
+    videoGenNode: (pos) => ({
+      id: uid('video'), type: 'videoGenNode', position: pos,
+      data: { label: 'AI 视频', src: '', poster: '' },
     }),
     noteNode: (pos) => ({
       id: uid('note'),
@@ -88,10 +110,13 @@ export const useFlowStore = defineStore('flow', () => {
   }
 
   // ─── Data updates ────────────────────────────────────────────────────
-  function updateNodeData(id, patch) {
-    nodes.value = nodes.value.map((n) =>
-      n.id === id ? { ...n, data: { ...n.data, ...patch } } : n,
-    )
+  // liveNodes: VueFlow 内部节点快照（含最新拖拽坐标），异步操作后传入以避免位置重置
+  function updateNodeData(id, patch, liveNodes) {
+    nodes.value = nodes.value.map((n) => {
+      const live = liveNodes?.find((v) => v.id === n.id)
+      const base = live ? { ...n, position: live.position } : n
+      return base.id === id ? { ...base, data: { ...base.data, ...patch } } : base
+    })
     if ('outputValue' in patch || 'content' in patch) {
       const val = patch.outputValue ?? patch.content ?? ''
       edges.value = edges.value.map((e) =>
@@ -221,8 +246,8 @@ export const useFlowStore = defineStore('flow', () => {
       })
   }
 
-  // ─── Change node type (remove → nextTick → re-insert) ────────────────
-  async function changeNodeType(id, newType, livePosition) {
+  // ─── Change node type (in-place replacement, position preserved) ─────
+  function changeNodeType(id, newType, livePosition) {
     const idx = nodes.value.findIndex((n) => n.id === id)
     if (idx === -1) return
 
@@ -236,9 +261,13 @@ export const useFlowStore = defineStore('flow', () => {
         newData = { label, content: content || src || '双击编辑内容...', outputValue }
         break
       case 'imageNode':
+      case 'imageUploadNode':
+      case 'imageGenNode':
         newData = { label, src, alt: '图片' }
         break
       case 'videoNode':
+      case 'videoUploadNode':
+      case 'videoGenNode':
         newData = { label, src, poster: '' }
         break
       case 'noteNode':
@@ -249,10 +278,53 @@ export const useFlowStore = defineStore('flow', () => {
     }
 
     const position = livePosition ?? n.position
-    const newNode = { ...n, type: newType, data: newData, position }
-    nodes.value = [...nodes.value.slice(0, idx), ...nodes.value.slice(idx + 1)]
-    await nextTick()
-    nodes.value = [...nodes.value.slice(0, idx), newNode, ...nodes.value.slice(idx)]
+    nodes.value = [
+      ...nodes.value.slice(0, idx),
+      { ...n, type: newType, data: newData, position },
+      ...nodes.value.slice(idx + 1),
+    ]
+  }
+
+  // ─── Upstream context collection ──────────────────────────────────────
+  /**
+   * 收集当前节点的上游参考上下文。
+   * - 直连节点（1 跳）：无论该节点 scope 为何，均纳入。
+   * - 间接节点（>1 跳）：仅当该节点 scope === 'global' 时纳入，并继续向上遍历。
+   * 返回 [{ nodeId, label, content, scope }]
+   */
+  function getUpstreamContext(nodeId) {
+    const allEdges = edges.value
+    const nodesById = {}
+    for (const n of nodes.value) nodesById[n.id] = n
+
+    const result = []
+    const visited = new Set()
+
+    function traverse(id, isDirect) {
+      for (const edge of allEdges) {
+        if (edge.target !== id) continue
+        const srcId = edge.source
+        if (visited.has(srcId)) continue
+        visited.add(srcId)
+
+        const src = nodesById[srcId]
+        if (!src) continue
+
+        const scope = src.data?.scope ?? 'direct'
+        const content = src.data?.outputValue || src.data?.content || ''
+
+        if (isDirect) {
+          if (content) result.push({ nodeId: srcId, label: src.data?.label || src.type, content, scope })
+          if (scope === 'global') traverse(srcId, false)
+        } else if (scope === 'global') {
+          if (content) result.push({ nodeId: srcId, label: src.data?.label || src.type, content, scope })
+          traverse(srcId, false)
+        }
+      }
+    }
+
+    traverse(nodeId, true)
+    return result
   }
 
   // ─── Canvas load / snapshot ──────────────────────────────────────────
@@ -297,6 +369,7 @@ export const useFlowStore = defineStore('flow', () => {
     groupSelectedNodes,
     ungroupNodes,
     changeNodeType,
+    getUpstreamContext,
     loadCanvas,
     getCanvasSnapshot,
     resetCanvas,

@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 @TableName("t_ai_model")
 public class AiModel {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /** 展示名称，如 Kling 3.0 */
@@ -38,6 +38,18 @@ public class AiModel {
 
     /** 简介 */
     private String description;
+
+    /** 中文分类：视频/图像/音频/文本 */
+    private String category;
+
+    /** 标签，逗号分隔，如 文生视频,高质量 */
+    private String tags;
+
+    /** emoji 图标 */
+    private String icon;
+
+    /** 主题色 hex，如 #646cff */
+    private String color;
 
     /** 0-下线 1-上线 */
     private Integer status;

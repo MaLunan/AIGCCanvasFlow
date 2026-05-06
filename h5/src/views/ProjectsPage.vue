@@ -13,16 +13,32 @@ onMounted(() => projectStore.fetchProjects())
 // ─── Create ──────────────────────────────────────────────────────────────────
 const showCreate = ref(false)
 const newName = ref('')
+const createError = ref('')
+const creating = ref(false)
 function openCreate() {
   newName.value = ''
+  createError.value = ''
   showCreate.value = true
   setTimeout(() => document.getElementById('new-project-input')?.focus(), 50)
 }
 async function confirmCreate() {
   const name = newName.value.trim() || '未命名项目'
-  const project = await projectStore.createProject(name)
-  showCreate.value = false
-  router.push({ path: '/canvas', query: { projectId: project.id } })
+  const duplicate = projects.value.some((p) => p.name === name)
+  if (duplicate) {
+    createError.value = `「${name}」已存在，请使用其他名称`
+    return
+  }
+  createError.value = ''
+  creating.value = true
+  try {
+    const project = await projectStore.createProject(name)
+    showCreate.value = false
+    router.push({ path: '/canvas', query: { projectId: project.id } })
+  } catch (e) {
+    createError.value = e.message || '创建失败，请稍后重试'
+  } finally {
+    creating.value = false
+  }
 }
 
 // ─── Open ─────────────────────────────────────────────────────────────────────
@@ -162,13 +178,18 @@ function formatTime(ts) {
             id="new-project-input"
             v-model="newName"
             class="modal-input"
+            :class="{ 'input-error': createError }"
             placeholder="项目名称"
             @keydown.enter="confirmCreate"
             @keydown.escape="showCreate = false"
+            @input="createError = ''"
           />
+          <p v-if="createError" class="modal-error">{{ createError }}</p>
           <div class="modal-actions">
             <button class="btn-ghost" @click="showCreate = false">取消</button>
-            <button class="btn-primary" @click="confirmCreate">创建并进入</button>
+            <button class="btn-primary" :disabled="creating" @click="confirmCreate">
+              {{ creating ? '创建中...' : '创建并进入' }}
+            </button>
           </div>
         </div>
       </template>
@@ -191,54 +212,57 @@ function formatTime(ts) {
   </div>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../styles/variables' as *;
+
 .projects-page {
   min-height: 100vh;
   overflow-y: auto;
-  background: #0b0b16;
-  color: #e0e0f0;
-  font-family: 'Inter', 'PingFang SC', sans-serif;
+  background: $bg-base;
+  color: $text-primary;
+  font-family: $font-family;
 }
 
-/* ─── Navbar ─────────────────────────────────────────────────── */
 .pnav {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 32px;
-  height: 60px;
+  height: $navbar-height;
   background: rgba(11, 11, 22, 0.95);
-  border-bottom: 1px solid #1e1e35;
+  border-bottom: 1px solid $border-subtle;
   position: sticky;
   top: 0;
-  z-index: 100;
-}
-.pnav-logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  color: #e0e0f0;
-}
-.logo-hex { font-size: 22px; color: #646cff; }
-.logo-name { font-size: 16px; font-weight: 700; }
-.pnav-actions { display: flex; gap: 10px; }
+  z-index: $z-navbar;
 
-/* ─── Page header ────────────────────────────────────────────── */
+  &-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: $text-primary;
+  }
+
+  &-actions { display: flex; gap: 10px; }
+}
+
+.logo-hex { font-size: 22px; color: $accent-primary; }
+.logo-name { font-size: 16px; font-weight: 700; }
+
 .page-header {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  max-width: 1200px;
+  max-width: $max-width;
   margin: 0 auto;
   padding: 40px 32px 24px;
 }
+
 .page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px; }
 .page-sub { font-size: 13px; color: #666680; margin: 0; }
 
-/* ─── Grid ───────────────────────────────────────────────────── */
 .project-grid {
-  max-width: 1200px;
+  max-width: $max-width;
   margin: 0 auto;
   padding: 0 32px 60px;
   display: grid;
@@ -248,19 +272,21 @@ function formatTime(ts) {
 
 .project-card {
   background: #13132a;
-  border: 1px solid #2e2e50;
-  border-radius: 12px;
+  border: 1px solid $border-default;
+  border-radius: $radius-lg;
   overflow: hidden;
   cursor: pointer;
   transition: border-color 0.18s, box-shadow 0.18s, transform 0.18s;
   position: relative;
+
+  &:hover {
+    border-color: rgba($accent-primary, 0.4);
+    box-shadow: 0 6px 24px rgba($accent-primary, 0.15);
+    transform: translateY(-2px);
+
+    .card-actions { opacity: 1; }
+  }
 }
-.project-card:hover {
-  border-color: #646cff66;
-  box-shadow: 0 6px 24px rgba(100, 108, 255, 0.15);
-  transform: translateY(-2px);
-}
-.project-card:hover .card-actions { opacity: 1; }
 
 .card-thumb {
   width: 100%;
@@ -270,6 +296,7 @@ function formatTime(ts) {
   align-items: center;
   justify-content: center;
 }
+
 .card-thumb-inner {
   display: flex;
   align-items: center;
@@ -278,9 +305,11 @@ function formatTime(ts) {
   height: 100%;
   background: linear-gradient(135deg, #1a1a3a 0%, #0f0f22 100%);
 }
+
 .card-thumb-icon { font-size: 36px; opacity: 0.2; }
 
 .card-info { padding: 12px 12px 8px; }
+
 .card-name {
   font-size: 13px;
   font-weight: 600;
@@ -290,6 +319,7 @@ function formatTime(ts) {
   text-overflow: ellipsis;
   margin-bottom: 6px;
 }
+
 .card-meta {
   display: flex;
   align-items: center;
@@ -297,7 +327,8 @@ function formatTime(ts) {
   font-size: 11px;
   color: #555575;
 }
-.dot { color: #333355; }
+
+.dot { color: $text-faint; }
 
 .card-actions {
   position: absolute;
@@ -308,25 +339,28 @@ function formatTime(ts) {
   opacity: 0;
   transition: opacity 0.15s;
 }
+
 .card-action-btn {
   background: rgba(17, 17, 36, 0.9);
-  border: 1px solid #2e2e50;
-  border-radius: 6px;
+  border: 1px solid $border-default;
+  border-radius: $radius-sm;
   padding: 4px 6px;
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s;
   line-height: 1;
+
+  &:hover { background: #1e1e3a; }
+  &.danger:hover { background: #3a1010; }
 }
-.card-action-btn:hover { background: #1e1e3a; }
-.card-action-btn.danger:hover { background: #3a1010; }
 
 .rename-wrap { margin-bottom: 6px; }
+
 .rename-input {
   width: 100%;
   background: #1a1a2e;
-  border: 1px solid #646cff;
-  border-radius: 4px;
+  border: 1px solid $accent-primary;
+  border-radius: $radius-sm;
   color: #d0d0f0;
   font-size: 13px;
   font-weight: 600;
@@ -336,17 +370,15 @@ function formatTime(ts) {
   box-sizing: border-box;
 }
 
-/* ─── Loading ───────────────────────────────────────────────── */
 .loading-state {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 40vh;
   font-size: 14px;
-  color: #444466;
+  color: $text-dim;
 }
 
-/* ─── Empty state ────────────────────────────────────────────── */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -354,49 +386,53 @@ function formatTime(ts) {
   justify-content: center;
   gap: 12px;
   min-height: 50vh;
-  color: #444466;
+  color: $text-dim;
 }
+
 .empty-icon { font-size: 64px; opacity: 0.15; }
 .empty-title { font-size: 18px; font-weight: 600; color: #555575; margin: 0; }
-.empty-sub { font-size: 13px; color: #444466; margin: 0; }
+.empty-sub { font-size: 13px; color: $text-dim; margin: 0; }
 
-/* ─── Modals ─────────────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.65);
-  z-index: 1000;
+  z-index: $z-modal;
 }
+
 .modal {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 1001;
+  z-index: $z-modal + 1;
   background: #1a1a2e;
-  border: 1px solid #2e2e50;
+  border: 1px solid $border-default;
   border-radius: 14px;
   padding: 28px 32px;
   min-width: 340px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+  box-shadow: $shadow-modal;
 }
+
 .modal-title {
   font-size: 17px;
   font-weight: 700;
-  color: #e0e0f0;
+  color: $text-primary;
   margin: 0 0 16px;
 }
+
 .modal-body {
   font-size: 13px;
-  color: #a0a0c0;
+  color: $text-secondary;
   margin: 0 0 20px;
 }
+
 .modal-input {
   width: 100%;
   background: #0f0f1e;
-  border: 1px solid #2e2e50;
-  border-radius: 8px;
-  color: #e0e0f0;
+  border: 1px solid $border-default;
+  border-radius: $radius-md;
+  color: $text-primary;
   font-size: 14px;
   padding: 10px 12px;
   outline: none;
@@ -404,48 +440,62 @@ function formatTime(ts) {
   box-sizing: border-box;
   font-family: inherit;
   transition: border-color 0.15s;
+
+  &:focus { border-color: $accent-primary; }
+  &.input-error { border-color: #ff4d4d; }
 }
-.modal-input:focus { border-color: #646cff; }
+
+.modal-error {
+  font-size: 12px;
+  color: #ff7070;
+  margin: -14px 0 16px;
+}
+
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 
-/* ─── Buttons ────────────────────────────────────────────────── */
 .btn-ghost {
   padding: 8px 16px;
   background: none;
-  border: 1px solid #2e2e50;
-  border-radius: 8px;
-  color: #a0a0c0;
+  border: 1px solid $border-default;
+  border-radius: $radius-md;
+  color: $text-secondary;
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   font-family: inherit;
+
+  &:hover { background: rgba(255, 255, 255, 0.047); color: #e0e0ff; }
 }
-.btn-ghost:hover { background: #ffffff0c; color: #e0e0ff; }
+
 .btn-primary {
   padding: 8px 18px;
-  background: #646cff;
+  background: $accent-primary;
   border: none;
-  border-radius: 8px;
+  border-radius: $radius-md;
   color: #fff;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
   font-family: inherit;
+
+  &:hover:not(:disabled) { background: #7c82ff; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &.lg { padding: 12px 28px; font-size: 14px; }
 }
-.btn-primary:hover { background: #7c82ff; }
-.btn-primary.lg { padding: 12px 28px; font-size: 14px; }
+
 .btn-danger {
   padding: 8px 18px;
   background: #ff4d4d;
   border: none;
-  border-radius: 8px;
+  border-radius: $radius-md;
   color: #fff;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
   font-family: inherit;
+
+  &:hover { background: #ff6666; }
 }
-.btn-danger:hover { background: #ff6666; }
 </style>

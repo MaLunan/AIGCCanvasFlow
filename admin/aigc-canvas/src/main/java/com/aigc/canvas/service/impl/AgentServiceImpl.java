@@ -1,63 +1,153 @@
 package com.aigc.canvas.service.impl;
 
+import com.aigc.canvas.client.LangChainClient;
 import com.aigc.canvas.dto.AgentGenerateRequest;
 import com.aigc.canvas.dto.AgentGenerateResponse;
+import com.aigc.canvas.dto.PolishRequest;
+import com.aigc.canvas.entity.AiModel;
+import com.aigc.canvas.entity.UserModelLibrary;
+import com.aigc.canvas.mapper.AiModelMapper;
+import com.aigc.canvas.mapper.UserModelLibraryMapper;
 import com.aigc.canvas.service.AgentService;
 import com.aigc.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AgentServiceImpl implements AgentService {
 
-    // TODO: 替换为 Redis 或数据库存储任务状态
-    private final ConcurrentHashMap<String, AgentGenerateResponse> taskStore = new ConcurrentHashMap<>();
+    private final LangChainClient langChainClient;
+    private final UserModelLibraryMapper libraryMapper;
+    private final AiModelMapper aiModelMapper;
+
+    // ── 生图 / 生视频 ────────────────────────────────────────────────────────
 
     @Override
     public AgentGenerateResponse generate(Long userId, AgentGenerateRequest request) {
-        String taskId = UUID.randomUUID().toString().replace("-", "");
+        String lcModel = resolveLcModel(request.getLibraryModelId());
 
-        // TODO: 接入实际大模型 API（Kling / Sora / Runway 等）
-        // 1. 根据 request.getModelKey() 选择模型
-        // 2. 调用对应 API，提交异步任务
-        // 3. 记录 taskId 与回调 URL
-        log.info("Agent generate: userId={}, prompt={}, model={}", userId, request.getPrompt(), request.getModelKey());
+        String taskId;
+        if ("image".equals(request.getTargetType())) {
+            taskId = langChainClient.submitT2I(
+                    request.getPrompt(),
+                    lcModel,
+                    request.getAspect()
+            );
+        } else {
+            // video（默认）
+            int duration = request.getDuration() != null ? request.getDuration() : 5;
+            String resolution = StringUtils.hasText(request.getResolution()) ? request.getResolution() : "1080p";
+            taskId = langChainClient.submitT2V(
+                    request.getPrompt(),
+                    lcModel,
+                    duration,
+                    resolution,
+                    request.getAspect()
+            );
+        }
 
-        AgentGenerateResponse response = AgentGenerateResponse.builder()
+        log.info("[Agent] generate submitted: userId={} type={} taskId={}", userId, request.getTargetType(), taskId);
+        return AgentGenerateResponse.builder()
                 .taskId(taskId)
                 .status("pending")
-                .estimatedSeconds(estimateSeconds(request))
-                .costPoints(estimateCost(request))
+                .progress(0)
                 .build();
-
-        taskStore.put(taskId, response);
-        return response;
     }
+
+    // ── 任务查询 ─────────────────────────────────────────────────────────────
 
     @Override
+    @SuppressWarnings("unchecked")
     public AgentGenerateResponse queryTask(String taskId) {
-        AgentGenerateResponse resp = taskStore.get(taskId);
-        if (resp == null) throw new BusinessException(404, "任务不存在");
-        return resp;
+        Map<String, Object> data = langChainClient.queryTask(taskId);
+
+        String status = (String) data.getOrDefault("status", "pending");
+        int progress = data.get("progress") instanceof Number n ? n.intValue() : 0;
+        String resultUrl = (String) data.get("result_url");
+        String error = (String) data.get("error");
+
+        // LangChain 状态 → 统一状态
+        String mappedStatus = switch (status) {
+            case "succeeded" -> "success";
+            case "failed"    -> "failed";
+            case "processing"-> "processing";
+            default          -> "pending";
+        };
+
+        return AgentGenerateResponse.builder()
+                .taskId(taskId)
+                .status(mappedStatus)
+                .progress(progress)
+                .resultUrl(resultUrl)
+                .error(error)
+                .build();
     }
 
-    private int estimateSeconds(AgentGenerateRequest req) {
-        int base = "video".equals(req.getTargetType()) ? 30 : 10;
-        if (req.getDuration() != null) base += req.getDuration() * 2;
-        return base;
-    }
+    // ── 文字润化 ─────────────────────────────────────────────────────────────
 
-    private int estimateCost(AgentGenerateRequest req) {
-        if ("video".equals(req.getTargetType())) {
-            int dur = req.getDuration() != null ? req.getDuration() : 5;
-            return dur * 10;
+    @Override
+    public String polish(Long userId, PolishRequest request) {
+        // 验证用户选用的模型在其库中且已启用
+        if (request.getLibraryModelId() != null) {
+            UserModelLibrary lib = libraryMapper.selectById(request.getLibraryModelId());
+            if (lib == null || !lib.getUserId().equals(userId)) {
+                throw new BusinessException(403, "所选模型不存在或无权使用");
+            }
+            if (lib.getEnabled() != 1) {
+                throw new BusinessException(400, "所选模型已禁用，请先在模型库中启用");
+            }
         }
-        return 5;
+
+        log.info("[Agent] polish: userId={} textLen={} ctxSize={}", userId,
+                request.getText().length(),
+                request.getContext() == null ? 0 : request.getContext().size());
+
+        return langChainClient.polish(request.getText(), request.getContext());
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * 根据用户模型库 ID 解析出对应的 LangChain 模型标识。
+     * 若未传或查不到，返回 null（由 LangChain 使用默认模型）。
+     */
+    private String resolveLcModel(Long libraryModelId) {
+        if (libraryModelId == null) return null;
+        UserModelLibrary lib = libraryMapper.selectById(libraryModelId);
+        if (lib == null) return null;
+        if (lib.getIsCustom() == 1) {
+            // 自定义模型：用 name 做简单映射，或直接返回 null 让 LangChain 用默认
+            return toLangChainModel(lib.getName());
+        }
+        // 平台模型：通过关联的 AiModel 获取 modelKey
+        if (lib.getModelId() == null) return null;
+        AiModel model = aiModelMapper.selectById(lib.getModelId());
+        return model != null ? toLangChainModel(model.getModelKey()) : null;
+    }
+
+    /**
+     * 将平台模型 key 映射到 LangChain 模型标识。
+     * LangChain T2I 支持：dalle3 / flux / sdxl
+     * LangChain T2V 支持：kling / wan / minimax
+     */
+    private String toLangChainModel(String modelKeyOrName) {
+        if (!StringUtils.hasText(modelKeyOrName)) return null;
+        String k = modelKeyOrName.toLowerCase();
+        // T2I
+        if (k.contains("dalle") || k.contains("dall-e")) return "dalle3";
+        if (k.contains("flux"))                            return "flux";
+        if (k.contains("sdxl") || k.contains("stable"))   return "sdxl";
+        // T2V
+        if (k.contains("kling"))                           return "kling";
+        if (k.contains("wan"))                             return "wan";
+        if (k.contains("minimax"))                         return "minimax";
+        // Text models (for polish, lcModel is ignored by polish chain)
+        return null;
     }
 }

@@ -48,11 +48,12 @@ function findFreePosition(startX, startY, newW, newH) {
   return { x: startX, y }
 }
 
+// 上传节点无输入连接点，不作为"下一节点"选项
 const TYPE_OPTIONS = [
-  { type: 'textNode',  icon: 'T',  label: '文本节点', color: '#646cff' },
-  { type: 'imageNode', icon: '🖼', label: '图片节点', color: '#42b883' },
-  { type: 'videoNode', icon: '▶',  label: '视频节点', color: '#ff6b6b' },
-  { type: 'noteNode',  icon: '📝', label: '备注',     color: '#f5c542' },
+  { type: 'textNode',     icon: 'T',  label: '文本节点', color: '#646cff' },
+  { type: 'imageGenNode', icon: '🎨', label: 'AI 图片',  color: '#42b883' },
+  { type: 'videoGenNode', icon: '🎬', label: 'AI 视频',  color: '#ff6b6b' },
+  { type: 'noteNode',     icon: '📝', label: '备注',     color: '#f5c542' },
 ]
 
 const open = ref(false)
@@ -83,7 +84,7 @@ function create(e, type) {
   const w = src?.dimensions?.width ?? 220
 
   // 预估新节点尺寸（dimensions 在渲染前未知，用各类型默认值）
-  const NEW_W = { textNode: 220, imageNode: 240, videoNode: 280, noteNode: 180 }[type] ?? 220
+  const NEW_W = { textNode: 220, imageGenNode: 240, videoGenNode: 280, noteNode: 180 }[type] ?? 220
   const NEW_H = 120
 
   // 在目标列（源节点右侧）找一个不与任何已有节点重叠的空位
@@ -148,9 +149,10 @@ function create(e, type) {
   </Teleport>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../../styles/variables' as *;
+
 .node-add-btn {
-  /* Positioned outside the node's right edge, vertically centerd */
   position: absolute;
   right: -38px;
   top: 50%;
@@ -159,7 +161,7 @@ function create(e, type) {
   height: 26px;
   border-radius: 50%;
   background: #1e1e35;
-  border: 2px solid #646cff88;
+  border: 2px solid rgba($accent-primary, 0.53);
   color: #a0aaff;
   font-size: 18px;
   line-height: 1;
@@ -168,21 +170,23 @@ function create(e, type) {
   align-items: center;
   justify-content: center;
   padding: 0;
-  /* Hidden by default, shown on node hover via global CSS */
   opacity: 0;
   transition: opacity 0.15s, background 0.15s, border-color 0.15s, transform 0.15s;
   z-index: 10;
-}
-.node-add-btn:hover {
-  background: #646cff;
-  border-color: #a0aaff;
-  color: #fff;
-  transform: translateY(-50%) scale(1.15);
+
+  &:hover {
+    background: $accent-primary;
+    border-color: #a0aaff;
+    color: #fff;
+    transform: translateY(-50%) scale(1.15);
+  }
 }
 </style>
 
 <!-- Global: show button when parent canvas-node is hovered -->
-<style>
+<style lang="scss">
+@use '../../styles/variables' as *;
+
 .canvas-node:hover .node-add-btn,
 .canvas-node.selected .node-add-btn {
   opacity: 1;
@@ -190,35 +194,41 @@ function create(e, type) {
 </style>
 
 <!-- Teleported elements -->
-<style>
+<style lang="scss">
+@use '../../styles/variables' as *;
+
 .nab-backdrop {
   position: fixed;
   inset: 0;
   z-index: 9000;
 }
+
 .nab-picker {
   position: fixed;
   z-index: 9001;
   background: #1a1a2e;
-  border: 1px solid #2e2e50;
-  border-radius: 10px;
+  border: 1px solid $border-default;
+  border-radius: $radius-lg;
   padding: 4px;
   min-width: 152px;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.65), 0 0 0 1px rgba(100,108,255,0.12);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba($accent-primary, 0.12);
   animation: nab-in 0.12s ease;
 }
+
 @keyframes nab-in {
   from { opacity: 0; transform: translateX(-6px) scale(0.97); }
-  to   { opacity: 1; transform: translateX(0)    scale(1);    }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
 }
+
 .nab-title {
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #444466;
+  color: $text-dim;
   padding: 4px 8px 6px;
 }
+
 .nab-item {
   display: flex;
   align-items: center;
@@ -235,23 +245,28 @@ function create(e, type) {
   transition: background 0.12s;
   margin-bottom: 2px;
   font-family: inherit;
+
+  &:last-child { margin-bottom: 0; }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.047);
+    color: $text-primary;
+  }
+
+  &.current {
+    background: rgba($accent-primary, 0.07);
+    border-color: rgba($accent-primary, 0.2);
+  }
 }
-.nab-item:last-child { margin-bottom: 0; }
-.nab-item:hover {
-  background: #ffffff0c;
-  color: #e0e0f0;
-}
-.nab-item.current {
-  background: #646cff12;
-  border-color: #646cff33;
-}
+
 .nab-icon { width: 16px; text-align: center; font-size: 13px; flex-shrink: 0; }
 .nab-label { flex: 1; font-size: 11px; }
+
 .nab-same {
   font-size: 9px;
-  color: #646cff88;
-  border: 1px solid #646cff44;
-  border-radius: 4px;
+  color: rgba($accent-primary, 0.53);
+  border: 1px solid rgba($accent-primary, 0.27);
+  border-radius: $radius-sm;
   padding: 1px 4px;
 }
 </style>

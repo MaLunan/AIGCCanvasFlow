@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 @TableName("t_asset")
 public class Asset {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     private Long userId;

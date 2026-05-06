@@ -2,6 +2,7 @@
 import { ref, nextTick } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useFlowStore } from '../../stores/flowStore'
+import ScopeToggle from './ScopeToggle.vue'
 
 const props = defineProps({
   id: { type: String, required: true },
@@ -40,12 +41,19 @@ const store = useFlowStore()
 const { findNode } = useVueFlow()
 
 const TYPE_OPTIONS = [
-  { type: 'textNode',  icon: 'T',  label: '文本节点', color: '#646cff', bg: '#646cff22' },
-  { type: 'imageNode', icon: '🖼', label: '图片节点', color: '#42b883', bg: '#42b88322' },
-  { type: 'videoNode', icon: '▶',  label: '视频节点', color: '#ff6b6b', bg: '#ff6b6b22' },
+  { type: 'textNode',        icon: 'T',  label: '文本节点', color: '#646cff', bg: '#646cff22' },
+  { type: 'imageUploadNode', icon: '🖼', label: '图片上传', color: '#42b883', bg: '#42b88322' },
+  { type: 'imageGenNode',    icon: '🎨', label: 'AI 图片',  color: '#42b883', bg: '#42b88322' },
+  { type: 'videoUploadNode', icon: '▶',  label: '视频上传', color: '#ff6b6b', bg: '#ff6b6b22' },
+  { type: 'videoGenNode',    icon: '🎬', label: 'AI 视频',  color: '#ff6b6b', bg: '#ff6b6b22' },
+  { type: 'noteNode',        icon: '📝', label: '备注',     color: '#f5c542', bg: '#f5c54222' },
 ]
 
-const currentMeta = () => TYPE_OPTIONS.find((o) => o.type === props.currentType) ?? TYPE_OPTIONS[0]
+const LEGACY_TYPE_MAP = { imageNode: 'imageUploadNode', videoNode: 'videoUploadNode' }
+const currentMeta = () => {
+  const t = LEGACY_TYPE_MAP[props.currentType] ?? props.currentType
+  return TYPE_OPTIONS.find((o) => o.type === t) ?? TYPE_OPTIONS[0]
+}
 
 const open = ref(false)
 // Picker will be teleported to body; store its screen position here
@@ -110,6 +118,8 @@ function selectType(e, type) {
     />
     <span v-else class="node-label" @dblclick.stop="startLabelEdit" title="双击编辑名称">{{ label }}</span>
 
+    <ScopeToggle :node-id="id" />
+
     <button class="node-del" @click.stop="store.removeNodeById(id)" title="删除节点">×</button>
   </div>
 
@@ -142,19 +152,20 @@ function selectType(e, type) {
   </Teleport>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../../styles/variables' as *;
+
 .node-header {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
   background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid #2e2e50;
+  border-bottom: 1px solid $border-default;
   border-radius: 9px 9px 0 0;
   position: relative;
 }
 
-/* ── Type badge ── */
 .type-badge {
   display: flex;
   align-items: center;
@@ -168,18 +179,20 @@ function selectType(e, type) {
   transition: filter 0.15s, border-color 0.15s;
   flex-shrink: 0;
   line-height: 1.4;
+
+  &:hover {
+    filter: brightness(1.35);
+    border-color: currentColor;
+  }
 }
-.type-badge:hover {
-  filter: brightness(1.35);
-  border-color: currentColor;
-}
+
 .type-icon { font-size: 12px; }
 .type-caret { font-size: 9px; opacity: 0.7; margin-left: 1px; }
 
 .node-label {
   font-size: 11px;
   font-weight: 600;
-  color: #a0a0c0;
+  color: $text-secondary;
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -187,15 +200,16 @@ function selectType(e, type) {
   min-width: 0;
   cursor: text;
 }
+
 .node-label-input {
   flex: 1;
   min-width: 0;
   font-size: 11px;
   font-weight: 600;
-  color: #e0e0f0;
-  background: #12121e;
-  border: 1px solid #646cff88;
-  border-radius: 4px;
+  color: $text-primary;
+  background: $bg-surface;
+  border: 1px solid rgba($accent-primary, 0.53);
+  border-radius: $radius-sm;
   padding: 1px 5px;
   outline: none;
   font-family: inherit;
@@ -212,22 +226,25 @@ function selectType(e, type) {
   width: 18px;
   height: 18px;
   padding: 0;
-  border-radius: 4px;
+  border-radius: $radius-sm;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
   flex-shrink: 0;
-}
-.node-del:hover {
-  color: #ff4d4d;
-  background: #ff4d4d22;
-  border-color: #ff4d4d66;
+
+  &:hover {
+    color: #ff4d4d;
+    background: rgba(#ff4d4d, 0.13);
+    border-color: rgba(#ff4d4d, 0.4);
+  }
 }
 </style>
 
 <!-- Teleported elements need global styles (not scoped) -->
-<style>
+<style lang="scss">
+@use '../../styles/variables' as *;
+
 .picker-backdrop {
   position: fixed;
   inset: 0;
@@ -238,16 +255,17 @@ function selectType(e, type) {
   position: fixed;
   z-index: 9001;
   background: #1a1a2e;
-  border: 1px solid #2e2e50;
-  border-radius: 10px;
+  border: 1px solid $border-default;
+  border-radius: $radius-lg;
   padding: 4px;
   min-width: 148px;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.65), 0 0 0 1px rgba(100,108,255,0.12);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba($accent-primary, 0.12);
   animation: picker-in 0.12s ease;
 }
+
 @keyframes picker-in {
   from { opacity: 0; transform: translateY(-4px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .picker-title {
@@ -255,7 +273,7 @@ function selectType(e, type) {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #444466;
+  color: $text-dim;
   padding: 4px 8px 6px;
 }
 
@@ -275,11 +293,13 @@ function selectType(e, type) {
   transition: background 0.12s;
   margin-bottom: 2px;
   font-family: inherit;
-}
-.picker-item:last-child { margin-bottom: 0; }
-.picker-item:hover:not(.active) {
-  background: #ffffff0a;
-  color: #e0e0f0;
+
+  &:last-child { margin-bottom: 0; }
+
+  &:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.04);
+    color: $text-primary;
+  }
 }
 
 .picker-icon {
@@ -288,10 +308,12 @@ function selectType(e, type) {
   font-size: 13px;
   flex-shrink: 0;
 }
+
 .picker-label {
   flex: 1;
   font-size: 11px;
 }
+
 .picker-check {
   font-size: 11px;
   opacity: 0.8;

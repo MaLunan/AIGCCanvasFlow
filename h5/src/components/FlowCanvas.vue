@@ -1,5 +1,5 @@
 <script setup>
-import { ref, markRaw, computed, onMounted, watch } from 'vue'
+import { ref, markRaw, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import {
   VueFlow,
@@ -31,11 +31,15 @@ import GroupNode from './nodes/GroupNode.vue'
 
 // Register node types (markRaw avoids reactivity overhead on components)
 const nodeTypes = {
-  textNode:  markRaw(TextNode),
-  imageNode: markRaw(ImageNode),
-  videoNode: markRaw(VideoNode),
-  noteNode:  markRaw(NoteNode),
-  groupNode: markRaw(GroupNode),
+  textNode:        markRaw(TextNode),
+  imageNode:       markRaw(ImageNode),  // legacy
+  imageUploadNode: markRaw(ImageNode),
+  imageGenNode:    markRaw(ImageNode),
+  videoNode:       markRaw(VideoNode),  // legacy
+  videoUploadNode: markRaw(VideoNode),
+  videoGenNode:    markRaw(VideoNode),
+  noteNode:        markRaw(NoteNode),
+  groupNode:       markRaw(GroupNode),
 }
 
 const route = useRoute()
@@ -43,6 +47,9 @@ const router = useRouter()
 const store = useFlowStore()
 const projectStore = useProjectStore()
 const { nodes, edges, snapEnabled, gridSize, showGrid } = storeToRefs(store)
+
+// 立即清空画布（setup 阶段，首次渲染前），避免显示上一个项目的残留数据
+store.resetCanvas()
 
 // ─── Project state ────────────────────────────────────────────────────────────
 const currentProjectId = ref(null)
@@ -74,7 +81,11 @@ async function saveProject() {
   // 空画布且从未保存过 → 删除该项目，不保存
   const project = projectStore.getProject(currentProjectId.value)
   if (snapshot.nodes.length === 0 && !project?.canvasData) {
-    await projectStore.deleteProject(currentProjectId.value)
+    try {
+      await projectStore.deleteProject(currentProjectId.value)
+    } catch (e) {
+      console.warn('[FlowCanvas] deleteProject failed, ignoring', e)
+    }
     return
   }
   saveStatus.value = 'saving'
@@ -88,12 +99,22 @@ async function saveProject() {
 }
 
 async function exitCanvas() {
-  await saveProject()
-  router.push('/projects')
+  try { await saveProject() } catch (e) { console.warn('[FlowCanvas] exitCanvas save failed', e) }
+  const back = window.history.state?.back
+  if (back) {
+    router.back()
+  } else {
+    router.push('/projects')
+  }
 }
 
 onBeforeRouteLeave(async () => {
+  clearTimeout(autoSaveTimer)
   await saveProject()
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(autoSaveTimer)
 })
 
 // ─── VueFlow instance ─────────────────────────────────────────────────────────
@@ -105,10 +126,14 @@ const {
   fitView,
   getSelectedNodes,
   getSelectedEdges,
-  selectAll,
   addNodes,
   addEdges,
 } = useVueFlow()
+
+function selectAll() {
+  store.nodes = store.nodes.map(n => ({ ...n, selected: true }))
+  store.edges = store.edges.map(e => ({ ...e, selected: true }))
+}
 
 // ─── Connect handler ──────────────────────────────────────────────────────────
 // Normalize connections: only source→target allowed.
@@ -133,6 +158,11 @@ onConnect((params) => {
     targetHandle = 'tl'
   }
 
+  // 上传节点无输入连接点，禁止任何连线指向它
+  const UPLOAD_TYPES = new Set(['imageUploadNode', 'videoUploadNode'])
+  const targetNode = store.nodes.find(n => n.id === target)
+  if (UPLOAD_TYPES.has(targetNode?.type)) return
+
   store.addEdge({
     source, sourceHandle, target, targetHandle,
     id: `edge-${source}-${sourceHandle}-${target}-${targetHandle}-${Date.now()}`,
@@ -149,11 +179,12 @@ const ghostLine = ref({ visible: false, x1: 0, y1: 0, x2: 0, y2: 0 })
 // drag source captured at connectStart, consumed at connectEnd
 let connectStartInfo = null  // { nodeId, handleId, hx, hy, startX, startY }
 
+// 上传节点无输入连接点，不出现在"拖线创建"列表中
 const EDGE_DROP_TYPES = [
-  { type: 'textNode',  icon: 'T',  label: '文本节点', color: '#646cff' },
-  { type: 'imageNode', icon: '🖼', label: '图片节点', color: '#42b883' },
-  { type: 'videoNode', icon: '▶',  label: '视频节点', color: '#ff6b6b' },
-  { type: 'noteNode',  icon: '📝', label: '备注',     color: '#f5c542' },
+  { type: 'textNode',     icon: 'T',  label: '文本节点', color: '#646cff' },
+  { type: 'imageGenNode', icon: '🎨', label: 'AI 图片',  color: '#42b883' },
+  { type: 'videoGenNode', icon: '🎬', label: 'AI 视频',  color: '#ff6b6b' },
+  { type: 'noteNode',     icon: '📝', label: '备注',     color: '#f5c542' },
 ]
 
 function ghostLinePath(x1, y1, x2, y2) {
@@ -223,7 +254,12 @@ function createFromEdgeDrop(e, type) {
   const canvasPos = { ...edgeDrop.value.canvasPos }
   closeEdgeDrop()
 
-  const NEW_W = { textNode: 220, imageNode: 240, videoNode: 280, noteNode: 180 }[type] ?? 220
+  const NEW_W = {
+    textNode: 220,
+    imageUploadNode: 240, imageGenNode: 240,
+    videoUploadNode: 280, videoGenNode: 280,
+    noteNode: 180,
+  }[type] ?? 220
   const newNode = store.createNode(type, { x: canvasPos.x - NEW_W / 2, y: canvasPos.y - 60 })
   if (!newNode) return
 
@@ -250,15 +286,18 @@ function doFitView() {
   fitView({ padding: 0.15, duration: 400 })
 }
 
-// Mark unsaved when canvas changes (after initial load)
+// Auto-save with debounce on every canvas change
 let watchReady = false
+let autoSaveTimer = null
+
 watch([nodes, edges], () => {
   if (!watchReady) return
   saveStatus.value = 'unsaved'
+  clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(() => saveProject(), 1500)
 }, { deep: true })
 
 async function loadProject(projectId) {
-  store.resetCanvas()
   if (!projectId) {
     const project = await projectStore.createProject('未命名项目')
     currentProjectId.value = String(project.id)
@@ -519,7 +558,9 @@ function onKeydown(e) {
   </div>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../styles/variables' as *;
+
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -529,7 +570,6 @@ function onKeydown(e) {
   outline: none;
 }
 
-/* ─── Top bar ─────────────────────────────────────────────── */
 .canvas-topbar {
   display: flex;
   align-items: center;
@@ -537,7 +577,7 @@ function onKeydown(e) {
   height: 44px;
   padding: 0 12px;
   background: #111124;
-  border-bottom: 1px solid #2e2e50;
+  border-bottom: 1px solid $border-default;
   flex-shrink: 0;
   z-index: 10;
 }
@@ -548,21 +588,23 @@ function onKeydown(e) {
   gap: 5px;
   padding: 5px 10px;
   background: none;
-  border: 1px solid #2e2e50;
-  border-radius: 6px;
-  color: #a0a0c0;
+  border: 1px solid $border-default;
+  border-radius: $radius-sm;
+  color: $text-secondary;
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
+
+  &:hover { background: rgba(255, 255, 255, 0.047); color: #e0e0ff; }
 }
-.topbar-back:hover { background: #ffffff0c; color: #e0e0ff; }
 
 .topbar-name-wrap {
   flex: 1;
   display: flex;
   justify-content: center;
 }
+
 .topbar-name {
   font-size: 13px;
   font-weight: 600;
@@ -576,14 +618,16 @@ function onKeydown(e) {
   max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
+
+  &:hover { border-color: $border-default; background: rgba(255, 255, 255, 0.031); }
 }
-.topbar-name:hover { border-color: #2e2e50; background: #ffffff08; }
+
 .topbar-name-input {
   font-size: 13px;
   font-weight: 600;
   color: #d0d0f0;
   background: #1a1a2e;
-  border: 1px solid #646cff;
+  border: 1px solid $accent-primary;
   border-radius: 5px;
   padding: 4px 8px;
   outline: none;
@@ -595,16 +639,17 @@ function onKeydown(e) {
 .topbar-status {
   font-size: 11px;
   white-space: nowrap;
+
+  &.saved   { color: $accent-green; }
+  &.unsaved { color: $accent-yellow; }
+  &.saving  { color: $text-secondary; }
 }
-.topbar-status.saved   { color: #42b883; }
-.topbar-status.unsaved { color: #f5c542; }
-.topbar-status.saving  { color: #a0a0c0; }
 
 .topbar-save {
   padding: 5px 14px;
-  background: #646cff;
+  background: $accent-primary;
   border: none;
-  border-radius: 6px;
+  border-radius: $radius-sm;
   color: #fff;
   font-size: 12px;
   font-weight: 600;
@@ -612,10 +657,10 @@ function onKeydown(e) {
   transition: background 0.15s;
   white-space: nowrap;
   font-family: inherit;
-}
-.topbar-save:hover { background: #7c82ff; }
 
-/* ─── Body (sidebar + canvas) ──────────────────────────────── */
+  &:hover { background: #7c82ff; }
+}
+
 .canvas-body {
   display: flex;
   flex: 1;
@@ -626,25 +671,28 @@ function onKeydown(e) {
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: #0b0b16;
+  background: $bg-base;
   touch-action: none;
   overscroll-behavior: none;
 }
 </style>
 
-<style>
+<style lang="scss">
+@use '../styles/variables' as *;
+
 /* ─── Global node shared styles ─────────────────────────────────────── */
 .canvas-node {
   background: #1a1a2e;
-  border: 1.5px solid #2e2e50;
+  border: 1.5px solid $border-default;
   border-radius: 10px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   transition: border-color 0.15s, box-shadow 0.15s;
   overflow: visible;
-}
-.canvas-node.selected {
-  border-color: #646cff;
-  box-shadow: 0 0 0 2px #646cff44, 0 4px 20px rgba(100, 108, 255, 0.25);
+
+  &.selected {
+    border-color: $accent-primary;
+    box-shadow: 0 0 0 2px rgba($accent-primary, 0.27), 0 4px 20px rgba($accent-primary, 0.25);
+  }
 }
 
 .node-header {
@@ -653,53 +701,56 @@ function onKeydown(e) {
   gap: 6px;
   padding: 7px 8px;
   background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid #2e2e50;
+  border-bottom: 1px solid $border-default;
   border-radius: 9px 9px 0 0;
 }
+
 .node-icon {
   font-size: 12px;
   flex-shrink: 0;
 }
+
 .node-label {
   font-size: 11px;
   font-weight: 600;
-  color: #a0a0c0;
+  color: $text-secondary;
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .node-del {
   background: none;
   border: none;
-  color: #444466;
+  color: $text-dim;
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
   padding: 0 2px;
-  border-radius: 4px;
+  border-radius: $radius-sm;
   transition: color 0.15s, background 0.15s;
   flex-shrink: 0;
-}
-.node-del:hover {
-  color: #ff4d4d;
-  background: #ff4d4d18;
+
+  &:hover {
+    color: #ff4d4d;
+    background: rgba(#ff4d4d, 0.09);
+  }
 }
 
-.node-body {
-  padding: 10px;
-}
+.node-body { padding: 10px; }
 
 .node-data-in {
   padding: 4px 10px 6px;
-  border-top: 1px solid #1e1e35;
+  border-top: 1px solid $border-subtle;
 }
+
 .data-badge {
   font-size: 10px;
-  color: #42b883;
-  background: #42b88318;
-  border: 1px solid #42b88333;
-  border-radius: 4px;
+  color: $accent-green;
+  background: rgba($accent-green, 0.09);
+  border: 1px solid rgba($accent-green, 0.2);
+  border-radius: $radius-sm;
   padding: 2px 6px;
   white-space: nowrap;
   overflow: hidden;
@@ -713,66 +764,70 @@ function onKeydown(e) {
   width: 12px !important;
   height: 12px !important;
   border-radius: 50% !important;
-  background: #2e2e50 !important;
-  border: 2px solid #646cff88 !important;
+  background: $border-default !important;
+  border: 2px solid rgba($accent-primary, 0.53) !important;
   transition: background 0.15s, border-color 0.15s !important;
-  /* NO transform/scale — CSS transform triggers lostpointercapture, breaking drag */
-}
-.vue-flow__handle:hover {
-  background: #646cff !important;
-  border-color: #a0aaff !important;
-}
-.vue-flow__handle-connecting {
-  background: #42b883 !important;
-  border-color: #42b883 !important;
+
+  &:hover {
+    background: $accent-primary !important;
+    border-color: #a0aaff !important;
+  }
 }
 
-/* ─── VueFlow edge customization ─────────────────────────────────────  */
+.vue-flow__handle-connecting {
+  background: $accent-green !important;
+  border-color: $accent-green !important;
+}
+
+/* ─── VueFlow edge customization ─────────────────────────────────────── */
 .vue-flow__edge-path {
-  stroke: #646cff;
+  stroke: $accent-primary;
   stroke-width: 2;
 }
+
 .vue-flow__edge.selected .vue-flow__edge-path {
   stroke: #a0aaff;
   stroke-width: 2.5;
 }
+
 .vue-flow__edge-label {
   font-size: 10px;
-  fill: #a0a0c0;
+  fill: $text-secondary;
 }
 
 /* ─── Selection box ─────────────────────────────────────────────────── */
 .vue-flow__selection {
-  background: rgba(100, 108, 255, 0.06) !important;
-  border: 1.5px solid #646cff99 !important;
+  background: rgba($accent-primary, 0.06) !important;
+  border: 1.5px solid rgba($accent-primary, 0.6) !important;
 }
 
 /* ─── Controls ──────────────────────────────────────────────────────── */
 .vue-flow__controls {
   background: #1a1a2e !important;
-  border: 1px solid #2e2e50 !important;
+  border: 1px solid $border-default !important;
   border-radius: 10px !important;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
 }
+
 .vue-flow__controls-button {
   background: transparent !important;
   border: none !important;
-  border-bottom: 1px solid #2e2e50 !important;
-  color: #a0a0c0 !important;
+  border-bottom: 1px solid $border-default !important;
+  color: $text-secondary !important;
   transition: background 0.15s !important;
-}
-.vue-flow__controls-button:hover {
-  background: #646cff22 !important;
-  color: #e0e0ff !important;
-}
-.vue-flow__controls-button:last-child {
-  border-bottom: none !important;
+
+  &:hover {
+    background: rgba($accent-primary, 0.13) !important;
+    color: #e0e0ff !important;
+  }
+
+  &:last-child { border-bottom: none !important; }
 }
 
 /* ─── MiniMap ───────────────────────────────────────────────────────── */
 .vue-flow__minimap {
   background: #0f0f1a !important;
-  border: 1px solid #2e2e50 !important;
+  border: 1px solid $border-default !important;
   border-radius: 10px !important;
 }
 
@@ -785,7 +840,7 @@ function onKeydown(e) {
 
 /* ─── Node resizer ─────────────────────────────────────────────────── */
 .vue-flow__resize-control {
-  background: #646cff !important;
+  background: $accent-primary !important;
   border-color: #a0aaff !important;
 }
 
@@ -805,30 +860,34 @@ function onKeydown(e) {
   inset: 0;
   z-index: 9000;
 }
+
 .edrop-picker {
   position: fixed;
   z-index: 9001;
   transform: translate(-50%, 8px);
   background: #1a1a2e;
-  border: 1px solid #2e2e50;
-  border-radius: 10px;
+  border: 1px solid $border-default;
+  border-radius: $radius-lg;
   padding: 4px;
   min-width: 160px;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.65), 0 0 0 1px rgba(100,108,255,0.12);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba($accent-primary, 0.12);
   animation: edrop-in 0.12s ease;
 }
+
 @keyframes edrop-in {
   from { opacity: 0; transform: translate(-50%, 0px) scale(0.96); }
   to   { opacity: 1; transform: translate(-50%, 8px) scale(1); }
 }
+
 .edrop-title {
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #444466;
+  color: $text-dim;
   padding: 4px 8px 6px;
 }
+
 .edrop-item {
   display: flex;
   align-items: center;
@@ -845,12 +904,15 @@ function onKeydown(e) {
   transition: background 0.12s;
   margin-bottom: 2px;
   font-family: inherit;
+
+  &:last-child { margin-bottom: 0; }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.047);
+    color: $text-primary;
+  }
 }
-.edrop-item:last-child { margin-bottom: 0; }
-.edrop-item:hover {
-  background: #ffffff0c;
-  color: #e0e0f0;
-}
+
 .edrop-icon { width: 16px; text-align: center; font-size: 13px; flex-shrink: 0; }
 .edrop-label { flex: 1; font-size: 11px; }
 </style>

@@ -17,6 +17,10 @@ spring:
 jwt:
   secret: aigc-canvas-flow-jwt-secret-key-2024-minimum-32-chars
 
+snowflake:
+  worker-id: 3
+  datacenter-id: 1
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true

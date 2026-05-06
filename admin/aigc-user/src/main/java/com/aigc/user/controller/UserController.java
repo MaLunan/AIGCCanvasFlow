@@ -21,6 +21,12 @@ public class UserController {
         this.userService = userService;
     }
 
+    /** 注册（无需登录） */
+    @PostMapping("/user/register")
+    public R<UserVO> register(@Valid @RequestBody UserCreateRequest request) {
+        return R.ok(userService.create(request));
+    }
+
     @PostMapping("/user")
     public R<UserVO> create(@Valid @RequestBody UserCreateRequest request) {
         return R.ok(userService.create(request));
@@ -33,8 +39,8 @@ public class UserController {
 
     @GetMapping("/user")
     public R<Page<UserVO>> page(
-            @RequestParam(defaultValue = "1") int current,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(value = "current", defaultValue = "1") int current,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
         return R.ok(userService.page(current, size));
     }
 

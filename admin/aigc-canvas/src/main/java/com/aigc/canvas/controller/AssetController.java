@@ -20,9 +20,9 @@ public class AssetController {
     @GetMapping
     public R<Page<AssetVO>> page(
             @RequestHeader(CommonConstants.HEADER_USER_ID) Long userId,
-            @RequestParam(defaultValue = "1")  int current,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false)    String type) {
+            @RequestParam(value = "current", defaultValue = "1")  int current,
+            @RequestParam(value = "size",    defaultValue = "20") int size,
+            @RequestParam(value = "type",    required = false)    String type) {
         return R.ok(assetService.page(userId, current, size, type));
     }
 
@@ -30,8 +30,8 @@ public class AssetController {
     @PostMapping
     public R<AssetVO> upload(
             @RequestHeader(CommonConstants.HEADER_USER_ID) Long userId,
-            @RequestParam(required = false) String name,
-            @RequestParam(defaultValue = "other") String type,
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "type", defaultValue = "other") String type,
             @RequestPart("file") MultipartFile file) {
         return R.ok(assetService.upload(userId, name, type, file));
     }

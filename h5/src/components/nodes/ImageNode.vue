@@ -1,24 +1,31 @@
 <script setup>
-import { ref, computed } from 'vue'
-import { Handle, Position } from '@vue-flow/core'
+import { ref, computed, watch, onMounted } from 'vue'
+import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { useRouter } from 'vue-router'
 import { useFlowStore } from '../../stores/flowStore'
+import { useModelStore } from '../../stores/modelStore'
+import { submitImageGen, pollTask } from '../../api/aiApi'
 import NodeHeader from './NodeHeader.vue'
 import NodeAddButton from './NodeAddButton.vue'
 
 const props = defineProps({
   id: String,
+  type: String,
   data: Object,
   selected: Boolean,
 })
 
 const store = useFlowStore()
+const modelStore = useModelStore()
+const router = useRouter()
+const { getNodes } = useVueFlow()
 const fileInputRef = ref(null)
 
 const isLocalFile = computed(() => (props.data.src || '').startsWith('blob:'))
 const fileName = computed(() => props.data.fileName || '')
 
-// ── mode ────────────────────────────────────────────────────────────────────
-const genMode = ref(false)
+// ── mode: determined by node type, not a tab ─────────────────────────────────
+const isGenMode = computed(() => props.type === 'imageGenNode')
 
 // ── upload ──────────────────────────────────────────────────────────────────
 function triggerUpload(e) {
@@ -41,29 +48,63 @@ function onFileChange(e) {
   e.target.value = ''
 }
 
+// ── 模型库（图像类） ──────────────────────────────────────────────────────────
+const imageModels = computed(() =>
+  modelStore.libraryModels.filter(m => m.category === '图像' && m.enabled)
+)
+
+onMounted(() => {
+  if (!modelStore.libraryModels.length && !modelStore.libraryLoading) {
+    modelStore.loadLibrary()
+  }
+})
+
 // ── generate ─────────────────────────────────────────────────────────────────
-const genPrompt  = ref('')
-const genAspect  = ref('1:1')
-const genModel   = ref('flux')
-const generating = ref(false)
+const genPrompt   = ref('')
+const genAspect   = ref('1:1')
+const genModel    = ref('')
+const generating  = ref(false)
+const genProgress = ref(0)
+const genError    = ref('')
 
 const ASPECT_OPTIONS = ['1:1', '4:3', '3:4', '16:9', '9:16']
-const MODEL_OPTIONS  = [
-  { value: 'flux',        label: 'Flux' },
-  { value: 'dalle3',      label: 'DALL·E 3' },
-  { value: 'sd3',         label: 'SD 3.5' },
-  { value: 'midjourney',  label: 'Midjourney' },
-  { value: 'ideogram',    label: 'Ideogram' },
-]
+
+watch(imageModels, (models) => {
+  if (models.length && !models.find(m => String(m.id) === genModel.value)) {
+    genModel.value = String(models[0].id)
+  }
+}, { immediate: true })
+
+watch(genModel, (val) => {
+  if (val === '__goto_market__') {
+    genModel.value = imageModels.value[0] ? String(imageModels.value[0].id) : ''
+    router.push('/models')
+  }
+})
 
 async function generateImage() {
-  if (!genPrompt.value.trim() || generating.value) return
+  if (!genPrompt.value.trim() || generating.value || !genModel.value || !imageModels.value.length) return
   generating.value = true
+  genProgress.value = 0
+  genError.value = ''
   try {
-    // TODO: 接入实际大模型 API
-    await new Promise(r => setTimeout(r, 1200))
-    // placeholder: store prompt as content
-    store.updateNodeData(props.id, { genPrompt: genPrompt.value, genModel: genModel.value, genAspect: genAspect.value })
+    const context = store.getUpstreamContext(props.id)
+    const { taskId } = await submitImageGen({
+      prompt: genPrompt.value,
+      libraryModelId: Number(genModel.value),
+      aspect: genAspect.value,
+      context,
+    })
+    const result = await pollTask(taskId, (p) => { genProgress.value = p })
+    store.updateNodeData(props.id, {
+      src: result.resultUrl,
+      outputValue: result.resultUrl,
+      genPrompt: genPrompt.value,
+      genModel: genModel.value,
+      genAspect: genAspect.value,
+    }, getNodes.value)
+  } catch (e) {
+    genError.value = e?.message || '生图失败，请重试'
   } finally {
     generating.value = false
   }
@@ -72,21 +113,16 @@ async function generateImage() {
 
 <template>
   <div :class="['canvas-node', 'image-node', { selected }]">
-    <Handle id="tl" type="target" :position="Position.Left" :style="{ top: '50%' }" />
+    <!-- AI生成节点：有输入/输出两个连接点；上传节点：只有输出连接点 -->
+    <Handle v-if="isGenMode" id="tl" type="target" :position="Position.Left" :style="{ top: '50%' }" />
 
-    <NodeHeader :id="id" :label="data.label" current-type="imageNode" />
+    <NodeHeader :id="id" :label="data.label" :current-type="type" />
 
     <input ref="fileInputRef" type="file" accept="image/*" class="hidden-file" @change="onFileChange" @click.stop />
 
-    <!-- ── Mode tabs ── -->
-    <div class="mode-tabs" @mousedown.stop>
-      <button :class="['mode-tab', !genMode && 'active']" @click.stop="genMode = false">上传</button>
-      <button :class="['mode-tab', genMode && 'active']"  @click.stop="genMode = true">AI 生成</button>
-    </div>
-
     <div class="node-body img-body">
       <!-- ══ Upload mode ══ -->
-      <template v-if="!genMode">
+      <template v-if="!isGenMode">
         <template v-if="data.src">
           <div class="img-preview-wrap">
             <img :src="data.src" :alt="data.alt || '图片'" class="node-image" @error="e => e.target.classList.add('img-error')" />
@@ -133,54 +169,38 @@ async function generateImage() {
             <div class="gen-field">
               <span class="gen-label">模型</span>
               <select v-model="genModel" class="gen-select">
-                <option v-for="m in MODEL_OPTIONS" :key="m.value" :value="m.value">{{ m.label }}</option>
+                <option v-if="!imageModels.length" disabled value="">— 暂无图像模型 —</option>
+                <option v-for="m in imageModels" :key="m.id" :value="String(m.id)">{{ m.icon }} {{ m.name }}</option>
+                <option value="__goto_market__">＋ 去广场添加</option>
               </select>
             </div>
           </div>
           <button
             class="gen-btn"
-            :disabled="!genPrompt.trim() || generating"
+            :disabled="!genPrompt.trim() || generating || !imageModels.length"
             @click.stop="generateImage"
           >
             <span v-if="generating" class="gen-spinner" />
-            {{ generating ? '生成中...' : '生成图片' }}
+            {{ generating ? `生成中 ${genProgress}%` : '生成图片' }}
           </button>
+          <div v-if="generating" class="gen-progress-bar">
+            <div class="gen-progress-fill" :style="{ width: genProgress + '%' }" />
+          </div>
+          <div v-if="genError" class="gen-error">{{ genError }}</div>
         </div>
       </template>
     </div>
 
     <Handle id="sr" type="source" :position="Position.Right" :style="{ top: '50%' }" />
-    <NodeAddButton :id="id" source-type="imageNode" />
+    <NodeAddButton :id="id" :source-type="type" />
   </div>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../../styles/variables' as *;
+
 .image-node { width: 240px; }
 .hidden-file { display: none; }
-
-/* ── Mode tabs ── */
-.mode-tabs {
-  display: flex;
-  border-bottom: 1px solid #2e2e50;
-}
-.mode-tab {
-  flex: 1;
-  padding: 5px 0;
-  background: none;
-  border: none;
-  font-size: 11px;
-  font-weight: 600;
-  color: #555577;
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s;
-  font-family: inherit;
-}
-.mode-tab.active {
-  color: #a0aaff;
-  background: #646cff12;
-  border-bottom: 2px solid #646cff;
-}
-.mode-tab:hover:not(.active) { color: #8888aa; }
 
 .img-body {
   padding: 0 !important;
@@ -188,15 +208,25 @@ async function generateImage() {
   border-radius: 0 0 10px 10px;
 }
 
-/* ── Preview ── */
-.img-preview-wrap { position: relative; line-height: 0; }
-.node-image { width: 100%; height: auto; display: block; }
-.node-image.img-error { filter: grayscale(1) opacity(0.25); }
+.img-preview-wrap {
+  position: relative;
+  line-height: 0;
+
+  &:hover .img-overlay { opacity: 1; }
+}
+
+.node-image {
+  width: 100%;
+  height: auto;
+  display: block;
+
+  &.img-error { filter: grayscale(1) opacity(0.25); }
+}
 
 .img-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -204,34 +234,33 @@ async function generateImage() {
   opacity: 0;
   transition: opacity 0.18s;
 }
-.img-preview-wrap:hover .img-overlay { opacity: 1; }
 
 .overlay-btn {
-  background: rgba(255,255,255,0.14);
-  border: 1px solid rgba(255,255,255,0.22);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: $radius-md;
   color: #fff;
   font-size: 12px;
   padding: 7px 14px;
   cursor: pointer;
   transition: background 0.15s;
   font-family: inherit;
+
+  &:hover { background: rgba(255, 255, 255, 0.26); }
+  &-del:hover { background: rgba(255, 60, 60, 0.5) !important; }
 }
-.overlay-btn:hover { background: rgba(255,255,255,0.26); }
-.overlay-btn-del:hover { background: rgba(255,60,60,0.5) !important; }
 
 .file-badge {
   padding: 4px 10px;
-  background: #42b88318;
-  border-top: 1px solid #42b88330;
+  background: rgba($accent-green, 0.09);
+  border-top: 1px solid rgba($accent-green, 0.19);
   font-size: 10px;
-  color: #42b883;
+  color: $accent-green;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* ── Placeholder ── */
 .img-placeholder {
   height: 130px;
   display: flex;
@@ -240,17 +269,18 @@ async function generateImage() {
   justify-content: center;
   gap: 6px;
   background: #0d0d1a;
-  border: 2px dashed #2e2e50;
+  border: 2px dashed $border-default;
   border-radius: 0 0 10px 10px;
   cursor: pointer;
   transition: border-color 0.15s;
+
+  &:hover { border-color: rgba($accent-green, 0.4); }
 }
-.img-placeholder:hover { border-color: #42b88366; }
+
 .placeholder-icon { font-size: 26px; opacity: 0.3; }
 .placeholder-hint { font-size: 12px; color: #666; }
 .placeholder-sub { font-size: 10px; color: #444; }
 
-/* ── Generate panel ── */
 .gen-panel {
   padding: 8px;
   display: flex;
@@ -258,12 +288,13 @@ async function generateImage() {
   gap: 6px;
   background: #0d0d1a;
 }
+
 .gen-prompt {
   width: 100%;
   box-sizing: border-box;
-  background: #12121e;
-  border: 1px solid #2e2e50;
-  border-radius: 6px;
+  background: $bg-surface;
+  border: 1px solid $border-default;
+  border-radius: $radius-sm;
   color: #d0d0f0;
   font-size: 11px;
   padding: 6px 8px;
@@ -272,31 +303,36 @@ async function generateImage() {
   font-family: inherit;
   line-height: 1.5;
   transition: border-color 0.15s;
+
+  &:focus { border-color: rgba($accent-primary, 0.53); }
+  &::placeholder { color: $text-dim; }
 }
-.gen-prompt:focus { border-color: #646cff88; }
-.gen-prompt::placeholder { color: #444466; }
+
 .gen-row {
   display: flex;
   gap: 6px;
 }
+
 .gen-field {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
+
 .gen-label {
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: #444466;
+  color: $text-dim;
 }
+
 .gen-select {
-  background: #12121e;
-  border: 1px solid #2e2e50;
+  background: $bg-surface;
+  border: 1px solid $border-default;
   border-radius: 5px;
-  color: #a0a0c0;
+  color: $text-secondary;
   font-size: 11px;
   padding: 4px 6px;
   outline: none;
@@ -304,8 +340,10 @@ async function generateImage() {
   font-family: inherit;
   width: 100%;
   transition: border-color 0.15s;
+
+  &:focus { border-color: rgba($accent-primary, 0.53); }
 }
-.gen-select:focus { border-color: #646cff88; }
+
 .gen-btn {
   display: flex;
   align-items: center;
@@ -313,25 +351,49 @@ async function generateImage() {
   gap: 6px;
   width: 100%;
   padding: 7px;
-  background: #646cff22;
-  border: 1px solid #646cff66;
-  border-radius: 6px;
+  background: rgba($accent-primary, 0.13);
+  border: 1px solid rgba($accent-primary, 0.4);
+  border-radius: $radius-sm;
   color: #a0aaff;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
   transition: background 0.15s, color 0.15s;
+
+  &:hover:not(:disabled) { background: rgba($accent-primary, 0.27); color: #e0e4ff; }
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
 }
-.gen-btn:hover:not(:disabled) { background: #646cff44; color: #e0e4ff; }
-.gen-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .gen-spinner {
-  width: 10px; height: 10px;
-  border: 2px solid #646cff44;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba($accent-primary, 0.27);
   border-top-color: #a0aaff;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
 }
+
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.gen-progress-bar {
+  height: 3px;
+  background: rgba($accent-primary, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.gen-progress-fill {
+  height: 100%;
+  background: $accent-primary;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.gen-error {
+  font-size: 10px;
+  color: $accent-red;
+  padding: 2px 0;
+}
 </style>

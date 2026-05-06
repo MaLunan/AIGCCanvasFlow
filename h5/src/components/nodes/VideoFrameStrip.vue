@@ -156,14 +156,15 @@ function handleGenerate(frame, e) {
   </div>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../../styles/variables' as *;
+
 .frame-strip-wrap {
-  background: #08080f;
-  border-top: 1px solid #1e1e3a;
+  background: $bg-deep;
+  border-top: 1px solid $border-subtle;
   user-select: none;
 }
 
-/* ── toolbar ── */
 .strip-toolbar {
   display: flex;
   align-items: center;
@@ -171,12 +172,14 @@ function handleGenerate(frame, e) {
   padding: 5px 8px 3px;
   flex-wrap: wrap;
 }
+
 .strip-label {
   font-size: 10px;
-  color: #646cff;
+  color: $accent-primary;
   font-weight: 600;
   white-space: nowrap;
 }
+
 .strip-dur {
   font-size: 9px;
   color: #444;
@@ -184,15 +187,12 @@ function handleGenerate(frame, e) {
   white-space: nowrap;
 }
 
-/* pills */
-.interval-pills {
-  display: flex;
-  gap: 3px;
-}
+.interval-pills { display: flex; gap: 3px; }
+
 .pill {
   padding: 2px 7px;
   border-radius: 10px;
-  border: 1px solid #2e2e50;
+  border: 1px solid $border-default;
   background: transparent;
   color: #555;
   font-size: 9px;
@@ -200,24 +200,22 @@ function handleGenerate(frame, e) {
   font-family: inherit;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
   white-space: nowrap;
-}
-.pill:hover { border-color: #646cff88; color: #a0aaff; }
-.pill.active {
-  background: #646cff22;
-  border-color: #646cff;
-  color: #c0c5ff;
+
+  &:hover { border-color: rgba($accent-primary, 0.53); color: #a0aaff; }
+
+  &.active {
+    background: rgba($accent-primary, 0.13);
+    border-color: $accent-primary;
+    color: #c0c5ff;
+  }
 }
 
-/* custom input */
-.custom-wrap {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
+.custom-wrap { display: flex; align-items: center; gap: 2px; }
+
 .custom-input {
   width: 44px;
-  background: #12121f;
-  border: 1px solid #2e2e50;
+  background: $bg-surface;
+  border: 1px solid $border-default;
   border-radius: 5px;
   color: #c0c0e0;
   font-size: 10px;
@@ -225,36 +223,41 @@ function handleGenerate(frame, e) {
   outline: none;
   font-family: inherit;
   -moz-appearance: textfield;
+
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+  &:focus { border-color: rgba($accent-primary, 0.53); }
+  &.error { border-color: rgba($accent-red, 0.53); }
 }
-.custom-input::-webkit-inner-spin-button,
-.custom-input::-webkit-outer-spin-button { -webkit-appearance: none; }
-.custom-input:focus { border-color: #646cff88; }
-.custom-input.error { border-color: #ff6b6b88; }
+
 .custom-unit { font-size: 9px; color: #444; }
 
-/* ── loading ── */
 .strip-loading {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
 }
+
 .strip-spinner {
-  width: 12px; height: 12px;
-  border: 2px solid #2e2e50;
-  border-top-color: #646cff;
+  width: 12px;
+  height: 12px;
+  border: 2px solid $border-default;
+  border-top-color: $accent-primary;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   flex-shrink: 0;
+
+  &.small { width: 9px; height: 9px; border-width: 1.5px; }
 }
-.strip-spinner.small { width: 9px; height: 9px; border-width: 1.5px; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
+
 .strip-loading-text { font-size: 10px; color: #555; }
 
-/* error */
-.strip-error { padding: 6px 10px; font-size: 10px; color: #ff6b6b99; }
+.strip-error { padding: 6px 10px; font-size: 10px; color: rgba($accent-red, 0.6); }
 
-/* re-parsing badge inside strip */
 .strip-reparsing {
   display: flex;
   align-items: center;
@@ -262,11 +265,10 @@ function handleGenerate(frame, e) {
   flex-shrink: 0;
   padding: 0 6px;
   font-size: 9px;
-  color: #646cff88;
+  color: rgba($accent-primary, 0.53);
   white-space: nowrap;
 }
 
-/* ── scroll strip ── */
 .strip-scroll {
   display: flex;
   align-items: center;
@@ -274,51 +276,58 @@ function handleGenerate(frame, e) {
   padding: 3px 6px 6px;
   overflow-x: auto;
   scrollbar-width: thin;
-  scrollbar-color: #2e2e50 transparent;
+  scrollbar-color: $border-default transparent;
   position: relative;
-}
-.strip-scroll::-webkit-scrollbar { height: 3px; }
-.strip-scroll::-webkit-scrollbar-track { background: transparent; }
-.strip-scroll::-webkit-scrollbar-thumb { background: #2e2e50; border-radius: 2px; }
 
-/* thumb */
+  &::-webkit-scrollbar { height: 3px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: $border-default; border-radius: 2px; }
+}
+
 .strip-thumb {
   position: relative;
   flex-shrink: 0;
-  width: 60px; height: 34px;
+  width: 60px;
+  height: 34px;
   cursor: pointer;
   border-radius: 3px;
   overflow: hidden;
   border: 1px solid transparent;
   transition: border-color 0.12s, transform 0.12s;
+
+  &.hovered {
+    border-color: $accent-primary;
+    transform: scaleY(1.06);
+    z-index: 1;
+  }
 }
-.strip-thumb.hovered {
-  border-color: #646cff;
-  transform: scaleY(1.06);
-  z-index: 1;
-}
+
 .thumb-img {
-  width: 100%; height: 100%;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   display: block;
   background: #111;
 }
+
 .thumb-time {
   position: absolute;
-  bottom: 1px; left: 2px;
+  bottom: 1px;
+  left: 2px;
   font-size: 8px;
-  color: #ffffffcc;
+  color: rgba(255, 255, 255, 0.8);
   text-shadow: 0 0 3px #000;
   pointer-events: none;
   line-height: 1;
 }
 
-/* generate image node button */
 .gen-btn {
   position: absolute;
-  bottom: 0; left: 0; right: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
   padding: 3px 0;
-  background: rgba(100, 108, 255, 0.88);
+  background: rgba($accent-primary, 0.88);
   border: none;
   color: #fff;
   font-size: 9px;
@@ -328,7 +337,8 @@ function handleGenerate(frame, e) {
   letter-spacing: 0.3px;
   transition: background 0.12s;
   line-height: 1;
+
+  &:hover { background: $accent-primary; }
+  &.busy { background: rgba($accent-primary, 0.5); cursor: wait; }
 }
-.gen-btn:hover { background: rgba(100, 108, 255, 1); }
-.gen-btn.busy { background: rgba(100, 108, 255, 0.5); cursor: wait; }
 </style>

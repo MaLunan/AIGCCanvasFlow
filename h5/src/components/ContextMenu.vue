@@ -76,27 +76,32 @@ function act(action) {
   </Teleport>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '../styles/variables' as *;
+
 .ctx-overlay {
   position: fixed;
   inset: 0;
   z-index: 9998;
 }
+
 .ctx-menu {
   position: fixed;
   z-index: 9999;
   background: #1a1a2e;
-  border: 1px solid #2e2e50;
-  border-radius: 10px;
+  border: 1px solid $border-default;
+  border-radius: $radius-lg;
   padding: 4px;
   min-width: 160px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(100, 108, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba($accent-primary, 0.15);
   animation: ctx-in 0.1s ease;
 }
+
 @keyframes ctx-in {
   from { opacity: 0; transform: scale(0.95); }
   to   { opacity: 1; transform: scale(1); }
 }
+
 .ctx-header {
   font-size: 10px;
   font-weight: 600;
@@ -105,6 +110,7 @@ function act(action) {
   color: #555578;
   padding: 4px 10px 6px;
 }
+
 .ctx-item {
   display: flex;
   align-items: center;
@@ -119,26 +125,31 @@ function act(action) {
   cursor: pointer;
   text-align: left;
   transition: background 0.12s;
+
+  span {
+    width: 16px;
+    text-align: center;
+    opacity: 0.8;
+  }
+
+  &:hover {
+    background: rgba($accent-primary, 0.13);
+    color: #e0e0ff;
+  }
+
+  &.danger {
+    color: #ff8080;
+
+    &:hover {
+      background: rgba(#ff4d4d, 0.09);
+      color: #ff4d4d;
+    }
+  }
 }
-.ctx-item span {
-  width: 16px;
-  text-align: center;
-  opacity: 0.8;
-}
-.ctx-item:hover {
-  background: #646cff22;
-  color: #e0e0ff;
-}
-.ctx-item.danger {
-  color: #ff8080;
-}
-.ctx-item.danger:hover {
-  background: #ff4d4d18;
-  color: #ff4d4d;
-}
+
 .ctx-divider {
   height: 1px;
-  background: #2e2e50;
+  background: $border-default;
   margin: 3px 8px;
 }
 </style>

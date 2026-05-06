@@ -38,9 +38,9 @@ public class ProjectController {
     @GetMapping
     public R<Page<ProjectVO>> page(
             @RequestHeader(CommonConstants.HEADER_USER_ID) Long userId,
-            @RequestParam(defaultValue = "1")  int current,
-            @RequestParam(defaultValue = "12") int size,
-            @RequestParam(required = false)    String category) {
+            @RequestParam(value = "current", defaultValue = "1")  int current,
+            @RequestParam(value = "size",    defaultValue = "12") int size,
+            @RequestParam(value = "category", required = false)   String category) {
         return R.ok(projectService.page(userId, current, size, category));
     }
 

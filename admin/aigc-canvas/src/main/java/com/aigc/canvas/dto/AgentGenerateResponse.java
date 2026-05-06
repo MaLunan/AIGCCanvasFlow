@@ -16,4 +16,8 @@ public class AgentGenerateResponse {
     private String resultUrl;
     /** 消耗算力点 */
     private Integer costPoints;
+    /** 进度 0~100（轮询时使用） */
+    private Integer progress;
+    /** 错误信息（status=failed 时有值） */
+    private String error;
 }

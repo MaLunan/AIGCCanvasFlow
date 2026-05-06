@@ -7,8 +7,14 @@ const request = axios.create({
 
 // ─── 请求拦截器 ───────────────────────────────────────────────────────────────
 request.interceptors.request.use((config) => {
-  // TODO: 接入真实登录后从 token 中解析 userId
-  config.headers['X-User-Id'] = '1'
+  const token = localStorage.getItem('access_token')
+  const userId = localStorage.getItem('user_id')
+  if (token) {
+    config.headers['Authorization'] = `Bearer ${token}`
+  }
+  if (userId) {
+    config.headers['X-User-Id'] = userId
+  }
   return config
 })
 
@@ -22,6 +28,12 @@ request.interceptors.response.use(
     return data
   },
   (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('user_id')
+      localStorage.removeItem('username')
+      window.location.href = '/login'
+    }
     const msg =
       error.response?.data?.message ||
       error.message ||

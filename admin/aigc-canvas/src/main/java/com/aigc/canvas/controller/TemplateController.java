@@ -18,10 +18,10 @@ public class TemplateController {
     /** 分页查询模板列表 */
     @GetMapping
     public R<Page<TemplateVO>> page(
-            @RequestParam(defaultValue = "1")  int current,
-            @RequestParam(defaultValue = "12") int size,
-            @RequestParam(required = false)    String category,
-            @RequestParam(required = false)    Boolean hot) {
+            @RequestParam(value = "current",  defaultValue = "1")  int current,
+            @RequestParam(value = "size",     defaultValue = "12") int size,
+            @RequestParam(value = "category", required = false)    String category,
+            @RequestParam(value = "hot",      required = false)    Boolean hot) {
         return R.ok(templateService.page(current, size, category, hot));
     }
 
@@ -36,7 +36,7 @@ public class TemplateController {
     public R<Long> useTemplate(
             @PathVariable Long id,
             @RequestHeader(CommonConstants.HEADER_USER_ID) Long userId,
-            @RequestParam(required = false) String projectName) {
+            @RequestParam(value = "projectName", required = false) String projectName) {
         return R.ok(templateService.useTemplate(id, userId, projectName));
     }
 }
