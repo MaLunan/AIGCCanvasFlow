@@ -2,18 +2,15 @@ package com.aigc.canvas.service.impl;
 
 import com.aigc.canvas.config.ModelKeysConfig;
 import com.aigc.canvas.dto.AiModelVO;
-import com.aigc.canvas.entity.AiModel;
-import com.aigc.canvas.mapper.AiModelMapper;
 import com.aigc.canvas.service.AiModelService;
 import com.aigc.canvas.service.UserModelLibraryService;
 import com.aigc.common.enums.ResultCode;
 import com.aigc.common.exception.BusinessException;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
@@ -21,66 +18,47 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class AiModelServiceImpl implements AiModelService {
 
-    private final AiModelMapper aiModelMapper;
-    private final UserModelLibraryService userModelLibraryService;
     private final ModelKeysConfig modelKeysConfig;
+    private final UserModelLibraryService userModelLibraryService;
 
     @Override
     public List<AiModelVO> list(String category, Long userId) {
-        LambdaQueryWrapper<AiModel> wrapper = new LambdaQueryWrapper<AiModel>()
-                .eq(AiModel::getStatus, 1)
-                .eq(StringUtils.hasText(category), AiModel::getCategory, category)
-                .orderByAsc(AiModel::getCategory, AiModel::getId);
-
-        List<AiModel> models = aiModelMapper.selectList(wrapper);
-
-        // 只展示已在 Nacos 中配置了凭证的模型
-        Set<String> configuredKeys = modelKeysConfig.getModelKeys().keySet();
-        models = models.stream()
-                .filter(m -> configuredKeys.contains(m.getModelKey()))
-                .toList();
-
-        // 若已登录，标注 inLibrary
-        Set<Long> libraryIds = userId != null
-                ? userModelLibraryService.getLibraryModelIds(userId)
+        Set<String> libraryKeys = userId != null
+                ? userModelLibraryService.getLibraryModelKeys(userId)
                 : Set.of();
 
-        return models.stream()
-                .map(m -> toVO(m, libraryIds.contains(m.getId())))
+        return modelKeysConfig.getModels().entrySet().stream()
+                .filter(e -> !StringUtils.hasText(category) || category.equals(e.getValue().getCategory()))
+                .sorted(Comparator.comparing((java.util.Map.Entry<String, ModelKeysConfig.ModelEntry> e) ->
+                                e.getValue().getCategory() == null ? "" : e.getValue().getCategory())
+                        .thenComparing(java.util.Map.Entry::getKey))
+                .map(e -> toVO(e.getKey(), e.getValue(), libraryKeys.contains(e.getKey())))
                 .toList();
     }
 
     @Override
     public AiModelVO getByKey(String modelKey) {
-        AiModel model = aiModelMapper.selectOne(
-                new LambdaQueryWrapper<AiModel>()
-                        .eq(AiModel::getModelKey, modelKey)
-                        .eq(AiModel::getStatus, 1));
-        if (model == null) throw new BusinessException(ResultCode.NOT_FOUND);
-        return toVO(model, false);
+        ModelKeysConfig.ModelEntry entry = modelKeysConfig.get(modelKey);
+        if (entry == null) throw new BusinessException(ResultCode.NOT_FOUND);
+        return toVO(modelKey, entry, false);
     }
 
-    private AiModelVO toVO(AiModel m, boolean inLibrary) {
+    private AiModelVO toVO(String modelKey, ModelKeysConfig.ModelEntry e, boolean inLibrary) {
         AiModelVO vo = new AiModelVO();
-        vo.setId(m.getId());
-        vo.setName(m.getName());
-        vo.setProvider(m.getProvider());
-        vo.setType(m.getType());
-        vo.setCategory(m.getCategory());
-        vo.setModelKey(m.getModelKey());
-        vo.setCostPoints(m.getCostPoints());
-        vo.setDescription(m.getDescription());
-        vo.setIcon(m.getIcon());
-        vo.setColor(m.getColor());
+        vo.setModelKey(modelKey);
+        vo.setName(e.getName());
+        vo.setProvider(e.getProvider());
+        vo.setType(e.getType());
+        vo.setCategory(e.getCategory());
+        vo.setDescription(e.getDescription());
+        vo.setIcon(e.getIcon());
+        vo.setColor(e.getColor());
+        vo.setCostPoints(e.getCostPoints());
+        vo.setTags(e.tagList());
+        vo.setSupportAspects(e.aspectList());
+        vo.setSupportDurations(e.durationList());
+        vo.setSupportResolutions(e.resolutionList());
         vo.setInLibrary(inLibrary);
-        if (StringUtils.hasText(m.getSupportAspects()))
-            vo.setSupportAspects(Arrays.asList(m.getSupportAspects().split(",")));
-        if (StringUtils.hasText(m.getSupportDurations()))
-            vo.setSupportDurations(Arrays.asList(m.getSupportDurations().split(",")));
-        if (StringUtils.hasText(m.getSupportResolutions()))
-            vo.setSupportResolutions(Arrays.asList(m.getSupportResolutions().split(",")));
-        if (StringUtils.hasText(m.getTags()))
-            vo.setTags(Arrays.asList(m.getTags().split(",")));
         return vo;
     }
 }

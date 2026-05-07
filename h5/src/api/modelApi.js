@@ -11,8 +11,8 @@ export function fetchLibrary() {
   return request.post('/canvas/models/library/list')
 }
 
-export function addFromMarket(modelId) {
-  return request.post('/canvas/models/library/add-market', null, { params: { modelId } })
+export function addFromMarket(modelKey) {
+  return request.post('/canvas/models/library/add-market', null, { params: { modelKey } })
 }
 
 export function addCustomModel(data) {

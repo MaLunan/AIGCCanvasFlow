@@ -53,7 +53,7 @@ const addingId = ref(null)
 const addError = ref('')
 async function handleAddToLibrary(model) {
   if (!isLoggedIn.value) { router.push('/login'); return }
-  addingId.value = model.id
+  addingId.value = model.modelKey
   addError.value = ''
   try {
     await modelStore.addMarketToLibrary(model)
@@ -194,7 +194,7 @@ function switchToLibrary() {
   
         <!-- Model grid -->
         <div v-else class="model-grid">
-          <div v-for="model in filteredMarket" :key="model.id" class="model-card"
+          <div v-for="model in filteredMarket" :key="model.modelKey" class="model-card"
             :style="{ '--accent': model.color || '#646cff' }">
             <div class="mc-header">
               <div class="mc-icon" :style="{ background: (model.color||'#646cff') + '22', color: model.color||'#646cff' }">
@@ -213,13 +213,13 @@ function switchToLibrary() {
               <span v-for="tag in (model.tags || [])" :key="tag" class="mc-tag">{{ tag }}</span>
             </div>
   
-            <button v-if="!model.inLibrary && !modelStore.isInLibrary(model.id)"
+            <button v-if="!model.inLibrary && !modelStore.isInLibrary(model.modelKey)"
               class="mc-add"
-              :class="addingId === model.id && 'adding'"
-              :disabled="addingId === model.id"
+              :class="addingId === model.modelKey && 'adding'"
+              :disabled="addingId === model.modelKey"
               :style="{ borderColor: (model.color||'#646cff') + '66', color: model.color||'#646cff' }"
               @click="handleAddToLibrary(model)">
-              <span v-if="addingId === model.id">添加中...</span>
+              <span v-if="addingId === model.modelKey">添加中...</span>
               <span v-else>+ 添加到库</span>
             </button>
             <div v-else class="mc-added" :style="{ color: model.color||'#646cff' }">

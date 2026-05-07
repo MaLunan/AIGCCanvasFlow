@@ -14,7 +14,11 @@ public class UserModelLibrary {
 
     private Long userId;
 
-    /** 关联 t_ai_model.id，自定义模型时为 null */
+    /** 平台模型 key（对应 Nacos model_key，自定义模型时为 null） */
+    private String modelKey;
+
+    /** 已废弃，保留列避免迁移风险，新代码不再使用 */
+    @TableField(exist = false)
     private Long modelId;
 
     /** 0-平台模型  1-自定义模型 */

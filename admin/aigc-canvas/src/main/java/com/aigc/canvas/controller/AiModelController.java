@@ -53,8 +53,8 @@ public class AiModelController {
     @PostMapping("/library/add-market")
     public R<UserModelLibraryVO> addFromMarket(
             @RequestHeader(CommonConstants.HEADER_USER_ID) Long userId,
-            @RequestParam Long modelId) {
-        return R.ok(userModelLibraryService.addFromMarket(userId, modelId));
+            @RequestParam String modelKey) {
+        return R.ok(userModelLibraryService.addFromMarket(userId, modelKey));
     }
 
     /**

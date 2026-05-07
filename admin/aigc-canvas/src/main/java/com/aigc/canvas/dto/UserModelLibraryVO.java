@@ -7,8 +7,8 @@ import java.time.LocalDateTime;
 @Data
 public class UserModelLibraryVO {
     private Long id;
-    /** 关联的平台模型 ID，自定义时为 null */
-    private Long modelId;
+    /** 平台模型 key（对应 Nacos model_key），自定义时为 null */
+    private String modelKey;
     private Boolean isCustom;
     private String name;
     private String provider;

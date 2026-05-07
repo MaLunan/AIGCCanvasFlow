@@ -47,23 +47,21 @@ export const useModelStore = defineStore('model', () => {
     }
   }
 
-  // 广场中已在库的 modelId 集合（用于显示 inLibrary 状态）
-  // 后端直接返回 inLibrary 字段，所以前端可直接用；
-  // 此计算属性用于本地的乐观更新
-  const libraryModelIds = computed(() =>
-    new Set(libraryModels.value.filter(m => !m.isCustom && m.modelId).map(m => m.modelId))
+  // 广场中已在库的 modelKey 集合（用于本地乐观更新 inLibrary 状态）
+  const libraryModelKeys = computed(() =>
+    new Set(libraryModels.value.filter(m => !m.isCustom && m.modelKey).map(m => m.modelKey))
   )
 
-  function isInLibrary(modelId) {
-    return libraryModelIds.value.has(modelId)
+  function isInLibrary(modelKey) {
+    return libraryModelKeys.value.has(modelKey)
   }
 
   // ── 广场 → 库 ────────────────────────────────────────────
   async function addMarketToLibrary(model) {
-    const newEntry = await addFromMarket(model.id)
+    const newEntry = await addFromMarket(model.modelKey)
     libraryModels.value.unshift(newEntry)
     // 同步更新广场列表的 inLibrary 标记
-    const found = marketModels.value.find(m => m.id === model.id)
+    const found = marketModels.value.find(m => m.modelKey === model.modelKey)
     if (found) found.inLibrary = true
     return newEntry
   }
@@ -105,7 +103,7 @@ export const useModelStore = defineStore('model', () => {
   return {
     marketModels, marketLoading, marketError, loadMarket,
     libraryModels, libraryLoading, libraryError, loadLibrary,
-    libraryModelIds, isInLibrary,
+    libraryModelKeys, isInLibrary,
     addMarketToLibrary, addCustom, updateCustom, toggleEnabled, removeFromLib,
   }
 })

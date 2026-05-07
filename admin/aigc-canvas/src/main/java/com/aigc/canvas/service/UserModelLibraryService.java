@@ -12,11 +12,11 @@ public interface UserModelLibraryService {
     /** 获取用户模型库列表 */
     List<UserModelLibraryVO> listByUser(Long userId);
 
-    /** 获取用户模型库中的平台模型 ID 集合（用于 inLibrary 标记） */
-    Set<Long> getLibraryModelIds(Long userId);
+    /** 获取用户库中已添加的平台模型 key 集合（用于 inLibrary 标记） */
+    Set<String> getLibraryModelKeys(Long userId);
 
-    /** 从广场添加平台模型到库 */
-    UserModelLibraryVO addFromMarket(Long userId, Long modelId);
+    /** 从广场添加平台模型到库（以 modelKey 标识） */
+    UserModelLibraryVO addFromMarket(Long userId, String modelKey);
 
     /** 添加自定义模型到库 */
     UserModelLibraryVO addCustom(Long userId, AddCustomModelRequest request);

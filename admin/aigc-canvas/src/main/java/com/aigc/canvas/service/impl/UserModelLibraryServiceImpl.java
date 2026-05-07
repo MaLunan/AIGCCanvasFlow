@@ -1,11 +1,10 @@
 package com.aigc.canvas.service.impl;
 
+import com.aigc.canvas.config.ModelKeysConfig;
 import com.aigc.canvas.dto.AddCustomModelRequest;
 import com.aigc.canvas.dto.UpdateCustomModelRequest;
 import com.aigc.canvas.dto.UserModelLibraryVO;
-import com.aigc.canvas.entity.AiModel;
 import com.aigc.canvas.entity.UserModelLibrary;
-import com.aigc.canvas.mapper.AiModelMapper;
 import com.aigc.canvas.mapper.UserModelLibraryMapper;
 import com.aigc.canvas.service.UserModelLibraryService;
 import com.aigc.common.enums.ResultCode;
@@ -15,12 +14,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,7 +24,7 @@ import java.util.stream.Collectors;
 public class UserModelLibraryServiceImpl implements UserModelLibraryService {
 
     private final UserModelLibraryMapper libraryMapper;
-    private final AiModelMapper aiModelMapper;
+    private final ModelKeysConfig modelKeysConfig;
 
     @Override
     public List<UserModelLibraryVO> listByUser(Long userId) {
@@ -37,122 +33,112 @@ public class UserModelLibraryServiceImpl implements UserModelLibraryService {
                         .eq(UserModelLibrary::getUserId, userId)
                         .orderByDesc(UserModelLibrary::getCreateTime));
         if (entries.isEmpty()) return Collections.emptyList();
-
-        // 一次性批量加载所有平台模型，避免 N+1
-        Set<Long> modelIds = entries.stream()
-                .filter(e -> e.getIsCustom() == 0 && e.getModelId() != null)
-                .map(UserModelLibrary::getModelId)
-                .collect(Collectors.toSet());
-        Map<Long, AiModel> modelMap = modelIds.isEmpty() ? Collections.emptyMap()
-                : aiModelMapper.selectBatchIds(modelIds).stream()
-                        .collect(Collectors.toMap(AiModel::getId, Function.identity()));
-
-        return entries.stream().map(e -> toVO(e, modelMap)).toList();
+        return entries.stream().map(this::toVO).toList();
     }
 
     @Override
-    public Set<Long> getLibraryModelIds(Long userId) {
+    public Set<String> getLibraryModelKeys(Long userId) {
         return libraryMapper.selectList(
                 new LambdaQueryWrapper<UserModelLibrary>()
-                        .select(UserModelLibrary::getModelId)
+                        .select(UserModelLibrary::getModelKey)
                         .eq(UserModelLibrary::getUserId, userId)
                         .eq(UserModelLibrary::getIsCustom, 0)
-                        .isNotNull(UserModelLibrary::getModelId)
+                        .isNotNull(UserModelLibrary::getModelKey)
         ).stream()
-                .map(UserModelLibrary::getModelId)
+                .map(UserModelLibrary::getModelKey)
                 .collect(Collectors.toSet());
     }
 
     @Override
-    public UserModelLibraryVO addFromMarket(Long userId, Long modelId) {
-        // 检查平台模型是否存在
-        AiModel model = aiModelMapper.selectById(modelId);
-        if (model == null || model.getStatus() == 0) {
-            throw new BusinessException(ResultCode.NOT_FOUND);
+    public UserModelLibraryVO addFromMarket(Long userId, String modelKey) {
+        // 校验 Nacos 中是否存在该模型
+        ModelKeysConfig.ModelEntry entry = modelKeysConfig.get(modelKey);
+        if (entry == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "该模型不存在或暂未开放");
         }
-        // 检查是否已添加
+        // 校验是否已添加
         Long exists = libraryMapper.selectCount(
                 new LambdaQueryWrapper<UserModelLibrary>()
                         .eq(UserModelLibrary::getUserId, userId)
-                        .eq(UserModelLibrary::getModelId, modelId)
+                        .eq(UserModelLibrary::getModelKey, modelKey)
                         .eq(UserModelLibrary::getIsCustom, 0));
         if (exists > 0) {
             throw new BusinessException(ResultCode.BAD_REQUEST.getCode(), "该模型已在模型库中");
         }
-        UserModelLibrary entry = new UserModelLibrary();
-        entry.setUserId(userId);
-        entry.setModelId(modelId);
-        entry.setIsCustom(0);
-        entry.setName(model.getName());
-        entry.setCategory(model.getCategory());
-        entry.setDescription(model.getDescription());
-        entry.setIcon(model.getIcon());
-        entry.setColor(model.getColor());
-        entry.setEnabled(1);
-        libraryMapper.insert(entry);
-        return toVO(entry, Map.of(model.getId(), model));
+        UserModelLibrary lib = new UserModelLibrary();
+        lib.setUserId(userId);
+        lib.setModelKey(modelKey);
+        lib.setIsCustom(0);
+        lib.setName(entry.getName());
+        lib.setCategory(entry.getCategory());
+        lib.setDescription(entry.getDescription());
+        lib.setIcon(entry.getIcon());
+        lib.setColor(entry.getColor());
+        lib.setEnabled(1);
+        libraryMapper.insert(lib);
+        return toVO(lib);
     }
 
     @Override
     public UserModelLibraryVO addCustom(Long userId, AddCustomModelRequest request) {
-        UserModelLibrary entry = new UserModelLibrary();
-        entry.setUserId(userId);
-        entry.setIsCustom(1);
-        entry.setName(request.getName());
-        entry.setCategory(StringUtils.hasText(request.getCategory()) ? request.getCategory() : "文本");
-        entry.setDescription(request.getDescription());
-        entry.setApiEndpoint(request.getApiEndpoint());
-        entry.setApiKey(request.getApiKey());
-        entry.setIcon(StringUtils.hasText(request.getIcon()) ? request.getIcon() : "⚙️");
-        entry.setColor(StringUtils.hasText(request.getColor()) ? request.getColor() : "#646cff");
-        entry.setEnabled(1);
-        libraryMapper.insert(entry);
-        return toVO(entry, Collections.emptyMap());
+        UserModelLibrary lib = new UserModelLibrary();
+        lib.setUserId(userId);
+        lib.setIsCustom(1);
+        lib.setName(request.getName());
+        lib.setCategory(StringUtils.hasText(request.getCategory()) ? request.getCategory() : "文本");
+        lib.setDescription(request.getDescription());
+        lib.setApiEndpoint(request.getApiEndpoint());
+        lib.setApiKey(request.getApiKey());
+        lib.setIcon(StringUtils.hasText(request.getIcon()) ? request.getIcon() : "⚙️");
+        lib.setColor(StringUtils.hasText(request.getColor()) ? request.getColor() : "#646cff");
+        lib.setEnabled(1);
+        libraryMapper.insert(lib);
+        return toVO(lib);
     }
 
     @Override
     public UserModelLibraryVO updateCustom(Long userId, Long libraryId, UpdateCustomModelRequest request) {
-        UserModelLibrary entry = getOwned(userId, libraryId);
-        if (entry.getIsCustom() != 1) {
+        UserModelLibrary lib = getOwned(userId, libraryId);
+        if (lib.getIsCustom() != 1) {
             throw new BusinessException(ResultCode.BAD_REQUEST.getCode(), "只能编辑自定义模型");
         }
-        entry.setName(request.getName());
-        if (StringUtils.hasText(request.getCategory())) entry.setCategory(request.getCategory());
-        entry.setDescription(request.getDescription());
-        entry.setApiEndpoint(request.getApiEndpoint());
-        if (StringUtils.hasText(request.getApiKey())) entry.setApiKey(request.getApiKey());
-        if (StringUtils.hasText(request.getIcon())) entry.setIcon(request.getIcon());
-        if (StringUtils.hasText(request.getColor())) entry.setColor(request.getColor());
-        libraryMapper.updateById(entry);
-        return toVO(entry, Collections.emptyMap());
+        lib.setName(request.getName());
+        if (StringUtils.hasText(request.getCategory())) lib.setCategory(request.getCategory());
+        lib.setDescription(request.getDescription());
+        lib.setApiEndpoint(request.getApiEndpoint());
+        if (StringUtils.hasText(request.getApiKey())) lib.setApiKey(request.getApiKey());
+        if (StringUtils.hasText(request.getIcon())) lib.setIcon(request.getIcon());
+        if (StringUtils.hasText(request.getColor())) lib.setColor(request.getColor());
+        libraryMapper.updateById(lib);
+        return toVO(lib);
     }
 
     @Override
     public void toggleEnabled(Long userId, Long libraryId) {
-        UserModelLibrary entry = getOwned(userId, libraryId);
-        entry.setEnabled(entry.getEnabled() == 1 ? 0 : 1);
-        libraryMapper.updateById(entry);
+        UserModelLibrary lib = getOwned(userId, libraryId);
+        lib.setEnabled(lib.getEnabled() == 1 ? 0 : 1);
+        libraryMapper.updateById(lib);
     }
 
     @Override
     public void remove(Long userId, Long libraryId) {
-        UserModelLibrary entry = getOwned(userId, libraryId);
-        libraryMapper.deleteById(entry.getId());
+        UserModelLibrary lib = getOwned(userId, libraryId);
+        libraryMapper.deleteById(lib.getId());
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private UserModelLibrary getOwned(Long userId, Long libraryId) {
-        UserModelLibrary entry = libraryMapper.selectById(libraryId);
-        if (entry == null) throw new BusinessException(ResultCode.NOT_FOUND);
-        if (!entry.getUserId().equals(userId)) throw new BusinessException(ResultCode.FORBIDDEN);
-        return entry;
+        UserModelLibrary lib = libraryMapper.selectById(libraryId);
+        if (lib == null) throw new BusinessException(ResultCode.NOT_FOUND);
+        if (!lib.getUserId().equals(userId)) throw new BusinessException(ResultCode.FORBIDDEN);
+        return lib;
     }
 
-    private UserModelLibraryVO toVO(UserModelLibrary e, Map<Long, AiModel> modelMap) {
+    private UserModelLibraryVO toVO(UserModelLibrary e) {
         UserModelLibraryVO vo = new UserModelLibraryVO();
         vo.setId(e.getId());
-        vo.setModelId(e.getModelId());
+        vo.setModelKey(e.getModelKey());
         vo.setIsCustom(e.getIsCustom() == 1);
         vo.setName(e.getName());
         vo.setCategory(e.getCategory());
@@ -167,23 +153,19 @@ public class UserModelLibraryServiceImpl implements UserModelLibraryService {
         if (StringUtils.hasText(key)) {
             vo.setApiKeyMasked(key.length() > 4 ? key.substring(0, 4) + "****" : "****");
         }
-        // 标签
         if (e.getIsCustom() == 1) {
             vo.setTags(List.of("自定义"));
-        } else {
-            // 从关联的平台模型拿 tags（如果有）
-            if (e.getModelId() != null) {
-                AiModel model = modelMap.get(e.getModelId());
-                if (model != null && StringUtils.hasText(model.getTags())) {
-                    vo.setTags(Arrays.asList(model.getTags().split(",")));
-                } else {
-                    vo.setTags(List.of());
-                }
-                // provider
-                if (model != null) vo.setProvider(model.getProvider());
+        } else if (StringUtils.hasText(e.getModelKey())) {
+            // 从 Nacos 补充 provider 和 tags
+            ModelKeysConfig.ModelEntry entry = modelKeysConfig.get(e.getModelKey());
+            if (entry != null) {
+                vo.setProvider(entry.getProvider());
+                vo.setTags(entry.tagList());
             } else {
                 vo.setTags(List.of());
             }
+        } else {
+            vo.setTags(List.of());
         }
         return vo;
     }
