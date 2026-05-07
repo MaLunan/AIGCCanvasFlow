@@ -1,7 +1,7 @@
 """文字润化 API 路由（同步，直接返回结果）"""
 from typing import List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.chains.polish_chain import polish_text
@@ -18,6 +18,9 @@ class ContextItem(BaseModel):
 class PolishRequest(BaseModel):
     text: str = Field(..., description="待润化的文本")
     context: List[ContextItem] = Field(default=[], description="上游节点上下文列表")
+    api_key: str = Field("", description="模型 API Key（不传则使用服务端默认配置）")
+    base_url: str = Field("", description="模型 API Base URL")
+    model_name: str = Field("", description="模型名称，如 gpt-4o / deepseek-chat")
 
 
 class PolishResponse(BaseModel):
@@ -27,5 +30,14 @@ class PolishResponse(BaseModel):
 @router.post("/text", response_model=PolishResponse, summary="文字润化")
 def polish(req: PolishRequest):
     ctx = [{"label": c.label, "content": c.content} for c in req.context if c.content]
-    result = polish_text(req.text, ctx or None)
+    try:
+        result = polish_text(
+            req.text,
+            ctx or None,
+            api_key=req.api_key or None,
+            base_url=req.base_url or None,
+            model_name=req.model_name or None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return PolishResponse(polished=result)

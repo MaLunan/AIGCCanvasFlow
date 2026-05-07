@@ -1,5 +1,6 @@
 package com.aigc.canvas.service.impl;
 
+import com.aigc.canvas.config.ModelKeysConfig;
 import com.aigc.canvas.dto.AiModelVO;
 import com.aigc.canvas.entity.AiModel;
 import com.aigc.canvas.mapper.AiModelMapper;
@@ -22,6 +23,7 @@ public class AiModelServiceImpl implements AiModelService {
 
     private final AiModelMapper aiModelMapper;
     private final UserModelLibraryService userModelLibraryService;
+    private final ModelKeysConfig modelKeysConfig;
 
     @Override
     public List<AiModelVO> list(String category, Long userId) {
@@ -31,6 +33,12 @@ public class AiModelServiceImpl implements AiModelService {
                 .orderByAsc(AiModel::getCategory, AiModel::getId);
 
         List<AiModel> models = aiModelMapper.selectList(wrapper);
+
+        // 只展示已在 Nacos 中配置了凭证的模型
+        Set<String> configuredKeys = modelKeysConfig.getModelKeys().keySet();
+        models = models.stream()
+                .filter(m -> configuredKeys.contains(m.getModelKey()))
+                .toList();
 
         // 若已登录，标注 inLibrary
         Set<Long> libraryIds = userId != null

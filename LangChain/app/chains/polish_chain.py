@@ -4,8 +4,6 @@ from typing import Optional, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from app.config import settings
-
 _POLISH_SYSTEM = """\
 你是专业的文字润色专家，擅长对文字进行语言润化、改写，使其更流畅、专业、生动。
 
@@ -17,22 +15,26 @@ _POLISH_SYSTEM = """\
 """
 
 
-def _build_llm() -> ChatOpenAI:
+def _build_llm(api_key: str, base_url: str, model_name: str) -> ChatOpenAI:
     return ChatOpenAI(
-        model=settings.openai_model,
-        openai_api_key=settings.openai_api_key,
-        openai_api_base=settings.openai_base_url,
+        model=model_name,
+        openai_api_key=api_key,
+        openai_api_base=base_url,
         temperature=0.7,
     )
 
 
-def polish_text(text: str, context: Optional[List[dict]] = None) -> str:
-    """
-    润化文本。
-    :param text: 待润化文字
-    :param context: 上游节点上下文，格式 [{"label": "...", "content": "..."}]
-    :return: 润化后的文字
-    """
+def polish_text(text: str,
+                context: Optional[List[dict]] = None,
+                api_key: Optional[str] = None,
+                base_url: Optional[str] = None,
+                model_name: Optional[str] = None) -> str:
+    if not api_key:
+        raise ValueError("请传入模型 API Key（api_key）")
+    if not base_url:
+        raise ValueError("请传入模型 API 地址（base_url）")
+    if not model_name:
+        raise ValueError("请传入模型名称（model_name）")
     context_hint = ""
     if context:
         items = "\n".join(
@@ -47,6 +49,6 @@ def polish_text(text: str, context: Optional[List[dict]] = None) -> str:
         ("system", _POLISH_SYSTEM + context_hint),
         ("human", "{text}"),
     ])
-    chain = tpl | _build_llm()
+    chain = tpl | _build_llm(api_key=api_key, base_url=base_url, model_name=model_name)
     result = chain.invoke({"text": text})
     return result.content

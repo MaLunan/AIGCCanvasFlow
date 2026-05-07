@@ -4,10 +4,20 @@ server:
 spring:
   application:
     name: aigc-canvas
+  config:
+    # optional: 表示 Nacos 中该配置不存在时不报错（方便本地开发）
+    import: optional:nacos:aigc-canvas-model-keys.yaml
   cloud:
     nacos:
+      server-addr: localhost:8848
       discovery:
         server-addr: localhost:8848
+      config:
+        server-addr: localhost:8848
+        namespace: public
+        group: DEFAULT_GROUP
+        file-extension: yaml
+        refresh-enabled: true
   datasource:
     url: jdbc:mysql://localhost:3306/aigc_canvas?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root

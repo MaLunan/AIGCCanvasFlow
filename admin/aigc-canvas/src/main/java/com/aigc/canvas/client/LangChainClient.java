@@ -2,12 +2,16 @@ package com.aigc.canvas.client;
 
 import com.aigc.canvas.dto.ContextItem;
 import com.aigc.common.exception.BusinessException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
@@ -34,7 +38,8 @@ public class LangChainClient {
      * 调用润化接口，返回润化后的文本。
      */
     @SuppressWarnings("unchecked")
-    public String polish(String text, List<ContextItem> context) {
+    public String polish(String text, List<ContextItem> context,
+                         String apiKey, String baseUrlOverride, String modelName) {
         String url = baseUrl + "/api/v1/polish/text";
 
         List<Map<String, String>> ctxList = context == null ? List.of() :
@@ -52,18 +57,28 @@ public class LangChainClient {
         Map<String, Object> body = new HashMap<>();
         body.put("text", text);
         body.put("context", ctxList);
+        body.put("api_key", apiKey != null ? apiKey : "");
+        body.put("base_url", baseUrlOverride != null ? baseUrlOverride : "");
+        body.put("model_name", modelName != null ? modelName : "");
 
         try {
-            log.info("[LangChain] POST {} text.len={} ctx.size={}", url, text.length(), ctxList.size());
+            log.info("[LangChain] POST {} text.len={} ctx.size={} model={}", url, text.length(), ctxList.size(), modelName);
             ResponseEntity<Map> resp = restTemplate.postForEntity(url, body, Map.class);
             Map<String, Object> data = resp.getBody();
             if (data == null || !data.containsKey("polished")) {
                 throw new BusinessException(500, "润化服务返回数据异常");
             }
             return (String) data.get("polished");
-        } catch (RestClientException e) {
-            log.error("[LangChain] polish failed: {}", e.getMessage());
-            throw new BusinessException(503, "润化服务暂不可用，请稍后重试");
+        } catch (HttpClientErrorException e) {
+            String detail = extractDetail(e);
+            log.warn("[LangChain] polish 400/4xx: {}", detail);
+            throw new BusinessException(e.getStatusCode().value(), detail);
+        } catch (HttpServerErrorException e) {
+            log.error("[LangChain] polish 5xx: {}", e.getMessage());
+            throw new BusinessException(502, "润化服务内部错误：" + e.getStatusCode().value());
+        } catch (ResourceAccessException e) {
+            log.error("[LangChain] polish 连接失败: {}", e.getMessage());
+            throw new BusinessException(503, "润化服务无法连接，请确认 LangChain 服务已启动");
         }
     }
 
@@ -94,9 +109,16 @@ public class LangChainClient {
             log.info("[LangChain] POST {} model={} aspect={}", url, lcModel, aspect);
             ResponseEntity<Map> resp = restTemplate.postForEntity(url, body, Map.class);
             return extractTaskId(resp.getBody());
-        } catch (RestClientException e) {
-            log.error("[LangChain] submitT2I failed: {}", e.getMessage());
-            throw new BusinessException(503, "生图服务暂不可用，请稍后重试");
+        } catch (HttpClientErrorException e) {
+            String detail = extractDetail(e);
+            log.warn("[LangChain] submitT2I 4xx: {}", detail);
+            throw new BusinessException(e.getStatusCode().value(), detail);
+        } catch (HttpServerErrorException e) {
+            log.error("[LangChain] submitT2I 5xx: {}", e.getMessage());
+            throw new BusinessException(502, "生图服务内部错误：" + e.getStatusCode().value());
+        } catch (ResourceAccessException e) {
+            log.error("[LangChain] submitT2I 连接失败: {}", e.getMessage());
+            throw new BusinessException(503, "生图服务无法连接，请确认 LangChain 服务已启动");
         }
     }
 
@@ -135,9 +157,16 @@ public class LangChainClient {
             log.info("[LangChain] POST {} model={} dur={}s res={}", url, lcModel, safeDur, safeRes);
             ResponseEntity<Map> resp = restTemplate.postForEntity(url, body, Map.class);
             return extractTaskId(resp.getBody());
-        } catch (RestClientException e) {
-            log.error("[LangChain] submitT2V failed: {}", e.getMessage());
-            throw new BusinessException(503, "生视频服务暂不可用，请稍后重试");
+        } catch (HttpClientErrorException e) {
+            String detail = extractDetail(e);
+            log.warn("[LangChain] submitT2V 4xx: {}", detail);
+            throw new BusinessException(e.getStatusCode().value(), detail);
+        } catch (HttpServerErrorException e) {
+            log.error("[LangChain] submitT2V 5xx: {}", e.getMessage());
+            throw new BusinessException(502, "生视频服务内部错误：" + e.getStatusCode().value());
+        } catch (ResourceAccessException e) {
+            log.error("[LangChain] submitT2V 连接失败: {}", e.getMessage());
+            throw new BusinessException(503, "生视频服务无法连接，请确认 LangChain 服务已启动");
         }
     }
 
@@ -153,9 +182,16 @@ public class LangChainClient {
             ResponseEntity<Map> resp = restTemplate.getForEntity(url, Map.class);
             if (resp.getBody() == null) throw new BusinessException(500, "任务查询返回数据异常");
             return resp.getBody();
-        } catch (RestClientException e) {
-            log.error("[LangChain] queryTask({}) failed: {}", taskId, e.getMessage());
-            throw new BusinessException(503, "任务查询服务暂不可用");
+        } catch (HttpClientErrorException e) {
+            String detail = extractDetail(e);
+            log.warn("[LangChain] queryTask({}) 4xx: {}", taskId, detail);
+            throw new BusinessException(e.getStatusCode().value(), detail);
+        } catch (HttpServerErrorException e) {
+            log.error("[LangChain] queryTask({}) 5xx: {}", taskId, e.getMessage());
+            throw new BusinessException(502, "任务查询服务内部错误：" + e.getStatusCode().value());
+        } catch (ResourceAccessException e) {
+            log.error("[LangChain] queryTask({}) 连接失败: {}", taskId, e.getMessage());
+            throw new BusinessException(503, "任务查询服务无法连接，请确认 LangChain 服务已启动");
         }
     }
 
@@ -167,6 +203,19 @@ public class LangChainClient {
             throw new BusinessException(500, "AI 服务返回数据异常，缺少 task_id");
         }
         return (String) body.get("task_id");
+    }
+
+    /**
+     * 从 FastAPI HTTPException 响应体中提取 detail 字段。
+     * FastAPI 错误格式：{"detail": "..."}
+     */
+    private String extractDetail(HttpClientErrorException e) {
+        try {
+            JsonNode node = new ObjectMapper().readTree(e.getResponseBodyAsString());
+            JsonNode detail = node.get("detail");
+            if (detail != null && !detail.isNull()) return detail.asText();
+        } catch (Exception ignored) {}
+        return e.getMessage();
     }
 
     /** 宽高比 → [width, height]，供 T2I 接口使用 */

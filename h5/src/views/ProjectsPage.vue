@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import { storeToRefs } from 'pinia'
+import AppNavbar from '../components/AppNavbar.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -92,17 +93,7 @@ function formatTime(ts) {
 
 <template>
   <div class="projects-page">
-    <!-- Navbar -->
-    <nav class="pnav">
-      <a class="pnav-logo" href="/">
-        <span class="logo-hex">⬡</span>
-        <span class="logo-name">CanvasFlow</span>
-      </a>
-      <div class="pnav-actions">
-        <button class="btn-ghost" @click="router.push('/')">首页</button>
-        <button class="btn-primary" @click="openCreate">+ 新建项目</button>
-      </div>
-    </nav>
+    <AppNavbar />
 
     <!-- Header -->
     <div class="page-header">
@@ -222,32 +213,6 @@ function formatTime(ts) {
   color: $text-primary;
   font-family: $font-family;
 }
-
-.pnav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 32px;
-  height: $navbar-height;
-  background: rgba(11, 11, 22, 0.95);
-  border-bottom: 1px solid $border-subtle;
-  position: sticky;
-  top: 0;
-  z-index: $z-navbar;
-
-  &-logo {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-    color: $text-primary;
-  }
-
-  &-actions { display: flex; gap: 10px; }
-}
-
-.logo-hex { font-size: 22px; color: $accent-primary; }
-.logo-name { font-size: 16px; font-weight: 700; }
 
 .page-header {
   display: flex;

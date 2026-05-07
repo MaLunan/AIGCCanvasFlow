@@ -113,8 +113,8 @@ async function generateImage() {
 
 <template>
   <div :class="['canvas-node', 'image-node', { selected }]">
-    <!-- AI生成节点：有输入/输出两个连接点；上传节点：只有输出连接点 -->
-    <Handle v-if="isGenMode" id="tl" type="target" :position="Position.Left" :style="{ top: '50%' }" />
+    <!-- AI生成节点 或 视频帧截取生成的节点：有输入/输出两个连接点；上传节点：只有输出连接点 -->
+    <Handle v-if="isGenMode || data.fromFrame" id="tl" type="target" :position="Position.Left" :style="{ top: '50%' }" />
 
     <NodeHeader :id="id" :label="data.label" :current-type="type" />
 

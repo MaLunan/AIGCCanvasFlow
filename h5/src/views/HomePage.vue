@@ -4,28 +4,14 @@ import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
 import { storeToRefs } from 'pinia'
+import AppNavbar from '../components/AppNavbar.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
 const { projects } = storeToRefs(projectStore)
-const authStore = useAuthStore()
-const { isLoggedIn, username } = storeToRefs(authStore)
-
-function handleLogout() {
-  authStore.logout()
-  router.push('/')
-}
+const { isLoggedIn } = storeToRefs(useAuthStore())
 
 onMounted(() => { if (isLoggedIn.value) projectStore.fetchProjects() })
-
-// ── Nav ─────────────────────────────────────────────────────────────────────
-const navItems = [
-  { label: '首页',     to: '/' },
-  { label: '我的项目', to: '/projects' },
-  { label: '模板广场', to: '/templates' },
-  { label: '模型库',   to: '/models' },
-  { label: '帮助',     to: '/help' },
-]
 
 // ── Recent projects (real data, up to 4, sorted by last updated) ─────────────
 const recentProjects = computed(() =>
@@ -34,18 +20,6 @@ const recentProjects = computed(() =>
     .sort((a, b) => new Date(b.updateTime) - new Date(a.updateTime))
     .slice(0, 4)
 )
-
-// ── Templates (mock) ─────────────────────────────────────────────────────────
-const templates = ref([
-  { id: 1,  name: '悬疑短剧',   category: '短剧', uses: '12.4k', color: '#646cff' },
-  { id: 2,  name: '情感口播',   category: '口播', uses: '8.9k',  color: '#42b883' },
-  { id: 3,  name: '商品广告',   category: '广告', uses: '21.2k', color: '#ff6b6b' },
-  { id: 4,  name: 'Vlog 旅行',  category: 'Vlog', uses: '5.6k',  color: '#f5c542' },
-  { id: 5,  name: '知识分享',   category: '教育', uses: '14.1k', color: '#7fd1f5' },
-  { id: 6,  name: '古风 MV',    category: 'MV',   uses: '9.3k',  color: '#d07ff5' },
-  { id: 7,  name: '品牌宣传片', category: '广告', uses: '6.8k',  color: '#ff9966' },
-  { id: 8,  name: '搞笑段子',   category: '娱乐', uses: '18.7k', color: '#42b883' },
-])
 
 // ── Features ─────────────────────────────────────────────────────────────────
 const features = [
@@ -154,31 +128,7 @@ function formatTime(ts) {
 <template>
   <div class="home">
 
-    <!-- ═══════════════════════ NAVBAR ═══════════════════════ -->
-    <nav class="navbar">
-      <div class="nav-inner">
-        <a class="nav-logo" href="/">
-          <span class="logo-hex">⬡</span>
-          <span class="logo-name">CanvasFlow</span>
-          <span class="logo-badge">AIGC</span>
-        </a>
-
-        <div class="nav-links">
-          <a v-for="item in navItems" :key="item.label" :href="item.to" class="nav-link">
-            {{ item.label }}
-          </a>
-        </div>
-
-        <div class="nav-actions">
-          <button class="btn-ghost" @click="router.push('/canvas')">开始创作</button>
-          <template v-if="isLoggedIn">
-            <span class="nav-username">{{ username }}</span>
-            <button class="btn-ghost" @click="handleLogout">退出</button>
-          </template>
-          <button v-else class="btn-primary" @click="router.push('/login')">登录 / 注册</button>
-        </div>
-      </div>
-    </nav>
+    <AppNavbar />
 
     <!-- ═══════════════════════ HERO ═══════════════════════ -->
     <section class="hero">
@@ -244,36 +194,6 @@ function formatTime(ts) {
               />
               <button class="agent-go" :disabled="!agentPrompt.trim()" @click="startAgent">生成</button>
             </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════════════════════ TEMPLATES ═══════════════════════ -->
-    <section class="section section-dark">
-      <div class="section-inner">
-        <div class="section-header">
-          <h2 class="section-title">模板广场</h2>
-          <a href="/templates" class="section-more">全部模板 →</a>
-        </div>
-        <div class="template-scroll">
-          <div
-            v-for="t in templates"
-            :key="t.id"
-            class="template-card"
-            :style="{ '--accent': t.color }"
-          >
-            <div class="template-thumb" :style="{ background: t.color + '22', borderColor: t.color + '44' }">
-              <span class="template-icon">🎬</span>
-            </div>
-            <div class="template-name">{{ t.name }}</div>
-            <div class="template-meta">
-              <span class="template-cat" :style="{ color: t.color }">{{ t.category }}</span>
-              <span class="template-uses">{{ t.uses }} 次使用</span>
-            </div>
-            <button class="template-use" :style="{ borderColor: t.color + '66', color: t.color }">
-              使用模板
-            </button>
           </div>
         </div>
       </div>
@@ -398,98 +318,6 @@ function formatTime(ts) {
   font-family: $font-family;
   min-height: 100vh;
   overflow-y: auto;
-}
-
-/* ── Navbar ── */
-.navbar {
-  position: sticky;
-  top: 0;
-  z-index: $z-navbar;
-  background: rgba(11, 11, 22, 0.85);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid $border-subtle;
-}
-
-.nav-inner {
-  max-width: $max-width;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: $navbar-height;
-  display: flex;
-  align-items: center;
-  gap: 32px;
-}
-
-.nav-logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  flex-shrink: 0;
-}
-
-.logo-hex { font-size: 22px; color: $accent-primary; }
-.logo-name { font-size: 16px; font-weight: 700; color: $text-primary; }
-
-.logo-badge {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  background: rgba($accent-primary, 0.13);
-  border: 1px solid rgba($accent-primary, 0.27);
-  color: #a0aaff;
-  padding: 2px 5px;
-  border-radius: $radius-sm;
-}
-
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1;
-}
-
-.nav-link {
-  padding: 6px 12px;
-  font-size: 13px;
-  color: #8080a0;
-  text-decoration: none;
-  border-radius: $radius-sm;
-  transition: color 0.15s, background 0.15s;
-
-  &:hover { color: $text-primary; background: rgba(255, 255, 255, 0.031); }
-}
-
-.nav-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.nav-username { font-size: 13px; color: $text-secondary; padding: 0 4px; }
-
-.btn-ghost {
-  padding: 7px 16px;
-  background: none;
-  border: 1px solid $border-default;
-  border-radius: $radius-md;
-  color: $text-secondary;
-  font-size: 13px;
-  cursor: pointer;
-  transition: $transition-fast;
-  font-family: inherit;
-
-  &:hover { border-color: rgba($accent-primary, 0.53); color: #a0aaff; }
-}
-
-.btn-primary {
-  padding: 7px 18px;
-  background: $accent-primary;
-  border: 1px solid $accent-primary;
-  border-radius: $radius-md;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: $transition-fast;
-  font-family: inherit;
-
-  &:hover { background: #7c83ff; }
 }
 
 /* ── Hero ── */
@@ -805,59 +633,6 @@ function formatTime(ts) {
   text-decoration: none;
 
   &:hover { color: #a0aaff; }
-}
-
-/* ── Templates ── */
-.template-scroll {
-  display: flex;
-  gap: 16px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: $border-default transparent;
-}
-
-.template-card {
-  flex-shrink: 0;
-  width: 160px;
-  background: $bg-surface;
-  border: 1px solid $border-subtle;
-  border-radius: $radius-lg;
-  padding: 12px;
-  cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s;
-
-  &:hover { border-color: var(--accent, #{$accent-primary}); transform: translateY(-2px); }
-}
-
-.template-thumb {
-  height: 100px;
-  border-radius: $radius-md;
-  border: 1px solid;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 10px;
-}
-
-.template-icon { font-size: 28px; opacity: 0.6; }
-.template-name { font-size: 13px; font-weight: 600; color: #d0d0f0; margin-bottom: 4px; }
-.template-meta { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 10px; }
-.template-cat { font-weight: 600; }
-.template-uses { color: $text-dim; }
-
-.template-use {
-  width: 100%;
-  padding: 6px;
-  background: none;
-  border: 1px solid;
-  border-radius: $radius-sm;
-  font-size: 11px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s;
-
-  &:hover { background: var(--accent, #{$accent-primary}); color: #fff; border-color: var(--accent, #{$accent-primary}); }
 }
 
 /* ── Features ── */

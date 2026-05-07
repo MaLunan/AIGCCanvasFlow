@@ -116,6 +116,7 @@ async function generateImageFromFrame(frame) {
         src: blobUrl,
         outputValue: blobUrl,
         fileName: `frame_${fmtFrameTime(frame.time)}.png`,
+        fromFrame: true,
       },
     }
 

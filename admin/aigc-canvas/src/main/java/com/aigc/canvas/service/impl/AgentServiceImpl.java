@@ -1,6 +1,7 @@
 package com.aigc.canvas.service.impl;
 
 import com.aigc.canvas.client.LangChainClient;
+import com.aigc.canvas.config.ModelKeysConfig;
 import com.aigc.canvas.dto.AgentGenerateRequest;
 import com.aigc.canvas.dto.AgentGenerateResponse;
 import com.aigc.canvas.dto.PolishRequest;
@@ -25,6 +26,7 @@ public class AgentServiceImpl implements AgentService {
     private final LangChainClient langChainClient;
     private final UserModelLibraryMapper libraryMapper;
     private final AiModelMapper aiModelMapper;
+    private final ModelKeysConfig modelKeysConfig;
 
     // ── 生图 / 生视频 ────────────────────────────────────────────────────────
 
@@ -93,7 +95,8 @@ public class AgentServiceImpl implements AgentService {
 
     @Override
     public String polish(Long userId, PolishRequest request) {
-        // 验证用户选用的模型在其库中且已启用
+        String apiKey = null, baseUrl = null, modelName = null;
+
         if (request.getLibraryModelId() != null) {
             UserModelLibrary lib = libraryMapper.selectById(request.getLibraryModelId());
             if (lib == null || !lib.getUserId().equals(userId)) {
@@ -102,13 +105,33 @@ public class AgentServiceImpl implements AgentService {
             if (lib.getEnabled() != 1) {
                 throw new BusinessException(400, "所选模型已禁用，请先在模型库中启用");
             }
+            if (lib.getIsCustom() == 1) {
+                // 自定义模型：直接使用用户填写的 API 配置
+                apiKey    = lib.getApiKey();
+                baseUrl   = lib.getApiEndpoint();
+                modelName = lib.getName();
+            } else if (lib.getModelId() != null) {
+                // 平台模型：从 Nacos 配置中查找凭证
+                AiModel model = aiModelMapper.selectById(lib.getModelId());
+                if (model != null) {
+                    ModelKeysConfig.ModelKeyEntry entry = modelKeysConfig.get(model.getModelKey());
+                    if (entry != null) {
+                        apiKey    = entry.getApiKey();
+                        baseUrl   = entry.getBaseUrl();
+                        modelName = entry.getModelName();
+                    } else {
+                        log.warn("[Agent] 平台模型 {} 未在 Nacos 配置中找到凭证", model.getModelKey());
+                    }
+                }
+            }
         }
 
-        log.info("[Agent] polish: userId={} textLen={} ctxSize={}", userId,
+        log.info("[Agent] polish: userId={} textLen={} ctxSize={} model={}", userId,
                 request.getText().length(),
-                request.getContext() == null ? 0 : request.getContext().size());
+                request.getContext() == null ? 0 : request.getContext().size(),
+                modelName);
 
-        return langChainClient.polish(request.getText(), request.getContext());
+        return langChainClient.polish(request.getText(), request.getContext(), apiKey, baseUrl, modelName);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
