@@ -8,7 +8,7 @@ import request from './request'
  * @returns {Promise<string>} 润化后的文本
  */
 export function polishText(text, libraryModelId, context = []) {
-  return request.post('/canvas/agent/polish', { text, libraryModelId, context })
+  return request.post('/canvas/agent/polish', { text, libraryModelId, context }, { timeout: 120000 })
 }
 
 /**

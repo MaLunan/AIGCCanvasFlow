@@ -20,3 +20,15 @@ worker:
 # 同时启动 API + Worker（需已 pip install -r requirements.txt，见 .venv/bin/honcho）
 all:
 	.venv/bin/honcho start
+# 本地启动 Nacos
+nacos:
+	docker run -d \
+	--name nacos \
+	-p 8848:8848 \
+	-p 9848:9848 \
+	-p 9849:9849 \
+	-e MODE=standalone \
+	-e NACOS_AUTH_ENABLE=false \
+	--platform linux/amd64 \
+	--restart always \
+	nacos/nacos-server:v2.1.2

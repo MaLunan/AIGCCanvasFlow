@@ -42,7 +42,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             "/auth/refresh",
             "/user/register",
             "/actuator/**",
-            "/canvas/models/list"
+            "/canvas/models/list",
+            "/canvas/assets/files/**"
     );
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();

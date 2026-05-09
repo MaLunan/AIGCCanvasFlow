@@ -329,11 +329,20 @@ export const useFlowStore = defineStore('flow', () => {
 
   // ─── Canvas load / snapshot ──────────────────────────────────────────
   /** 从保存的项目数据还原画布（在 FlowCanvas onMounted 前调用） */
+  const NO_LABEL_TYPES = new Set([
+    'imageNode', 'imageUploadNode', 'imageGenNode',
+    'videoNode', 'videoUploadNode', 'videoGenNode',
+  ])
+
   function loadCanvas(canvasData) {
     if (!canvasData) return
     const data = typeof canvasData === 'string' ? JSON.parse(canvasData) : canvasData
-    nodes.value = data.nodes ?? []
-    edges.value = data.edges ?? []
+    const loadedNodes = data.nodes ?? []
+    const nodeTypeMap = Object.fromEntries(loadedNodes.map(n => [n.id, n.type]))
+    nodes.value = loadedNodes
+    edges.value = (data.edges ?? []).map(e =>
+      NO_LABEL_TYPES.has(nodeTypeMap[e.source]) ? { ...e, label: '' } : e
+    )
   }
 
   /** 获取当前画布快照（用于保存） */

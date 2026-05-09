@@ -6,8 +6,18 @@ import com.aigc.common.constant.CommonConstants;
 import com.aigc.common.model.R;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.http.MediaType;
+import org.springframework.http.MediaTypeFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.net.MalformedURLException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 @RestController
 @RequestMapping("/canvas/assets")
@@ -15,6 +25,9 @@ import org.springframework.web.multipart.MultipartFile;
 public class AssetController {
 
     private final AssetService assetService;
+
+    @Value("${file.storage.path}")
+    private String storagePath;
 
     /** 分页查询资产列表，type: character / style / music / storyboard */
     @GetMapping
@@ -34,6 +47,19 @@ public class AssetController {
             @RequestParam(value = "type", defaultValue = "other") String type,
             @RequestPart("file") MultipartFile file) {
         return R.ok(assetService.upload(userId, name, type, file));
+    }
+
+    /** 访问已上传的文件（无需认证） */
+    @GetMapping("/files/{filename:.+}")
+    public ResponseEntity<Resource> serveFile(@PathVariable String filename) throws MalformedURLException {
+        Path file = Paths.get(storagePath).resolve(filename).normalize();
+        Resource resource = new UrlResource(file.toUri());
+        if (!resource.exists() || !resource.isReadable()) {
+            return ResponseEntity.notFound().build();
+        }
+        MediaType mediaType = MediaTypeFactory.getMediaType(resource)
+                .orElse(MediaType.APPLICATION_OCTET_STREAM);
+        return ResponseEntity.ok().contentType(mediaType).body(resource);
     }
 
     /** 删除资产 */

@@ -10,10 +10,15 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.UUID;
 
 @Service
@@ -21,6 +26,12 @@ import java.util.UUID;
 public class AssetServiceImpl implements AssetService {
 
     private final AssetMapper assetMapper;
+
+    @Value("${file.storage.path}")
+    private String storagePath;
+
+    @Value("${file.storage.base-url}")
+    private String baseUrl;
 
     @Override
     public Page<AssetVO> page(Long userId, int current, int size, String type) {
@@ -38,19 +49,28 @@ public class AssetServiceImpl implements AssetService {
     public AssetVO upload(Long userId, String name, String type, MultipartFile file) {
         if (file == null || file.isEmpty()) throw new BusinessException(400, "文件不能为空");
 
-        // TODO: 替换为实际的 OSS/S3 上传逻辑
         String originalFilename = file.getOriginalFilename();
         String ext = originalFilename != null && originalFilename.contains(".")
                 ? originalFilename.substring(originalFilename.lastIndexOf('.') + 1)
                 : "";
-        String fakeUrl = "/assets/" + UUID.randomUUID() + "." + ext;
+        String filename = UUID.randomUUID() + (ext.isEmpty() ? "" : "." + ext);
+
+        try {
+            Path dir = Paths.get(storagePath);
+            Files.createDirectories(dir);
+            file.transferTo(dir.resolve(filename));
+        } catch (IOException e) {
+            throw new BusinessException(500, "文件保存失败: " + e.getMessage());
+        }
+
+        String fileUrl = baseUrl + "/canvas/assets/files/" + filename;
 
         Asset asset = new Asset();
         asset.setUserId(userId);
         asset.setName(StringUtils.hasText(name) ? name : originalFilename);
         asset.setType(StringUtils.hasText(type) ? type : "other");
-        asset.setUrl(fakeUrl);
-        asset.setThumb(fakeUrl);
+        asset.setUrl(fileUrl);
+        asset.setThumb(fileUrl);
         asset.setFileSize(file.getSize());
         asset.setExt(ext);
         assetMapper.insert(asset);

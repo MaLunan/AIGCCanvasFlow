@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useFlowStore } from '../../stores/flowStore'
 import { useModelStore } from '../../stores/modelStore'
 import { submitImageGen, pollTask } from '../../api/aiApi'
+import { projectApi } from '../../api/projectApi'
 import NodeHeader from './NodeHeader.vue'
 import NodeAddButton from './NodeAddButton.vue'
 
@@ -21,8 +22,8 @@ const router = useRouter()
 const { getNodes } = useVueFlow()
 const fileInputRef = ref(null)
 
-const isLocalFile = computed(() => (props.data.src || '').startsWith('blob:'))
 const fileName = computed(() => props.data.fileName || '')
+const uploading = ref(false)
 
 // ── mode: determined by node type, not a tab ─────────────────────────────────
 const isGenMode = computed(() => props.type === 'imageGenNode')
@@ -35,17 +36,24 @@ function triggerUpload(e) {
 
 function clearImage(e) {
   e.stopPropagation()
-  if (isLocalFile.value) URL.revokeObjectURL(props.data.src)
   store.updateNodeData(props.id, { src: '', outputValue: '', fileName: '' })
 }
 
-function onFileChange(e) {
+async function onFileChange(e) {
   const file = e.target.files?.[0]
   if (!file) return
-  if (isLocalFile.value) URL.revokeObjectURL(props.data.src)
-  const blobUrl = URL.createObjectURL(file)
-  store.updateNodeData(props.id, { src: blobUrl, outputValue: blobUrl, fileName: file.name })
   e.target.value = ''
+  uploading.value = true
+  try {
+    const asset = await projectApi.uploadAsset(file, 'image')
+    store.updateNodeData(props.id, { src: asset.url, outputValue: '', fileName: file.name })
+  } catch {
+    // 上传失败时降级用本地预览（刷新后会丢失）
+    const blobUrl = URL.createObjectURL(file)
+    store.updateNodeData(props.id, { src: blobUrl, outputValue: '', fileName: file.name })
+  } finally {
+    uploading.value = false
+  }
 }
 
 // ── 模型库（图像类） ──────────────────────────────────────────────────────────
@@ -123,7 +131,13 @@ async function generateImage() {
     <div class="node-body img-body">
       <!-- ══ Upload mode ══ -->
       <template v-if="!isGenMode">
-        <template v-if="data.src">
+        <template v-if="uploading">
+          <div class="img-placeholder">
+            <div class="placeholder-icon">⏳</div>
+            <div class="placeholder-hint">上传中...</div>
+          </div>
+        </template>
+        <template v-else-if="data.src">
           <div class="img-preview-wrap">
             <img :src="data.src" :alt="data.alt || '图片'" class="node-image" @error="e => e.target.classList.add('img-error')" />
             <div class="img-overlay">
@@ -131,7 +145,7 @@ async function generateImage() {
               <button class="overlay-btn overlay-btn-del" @click.stop="clearImage" title="清除图片">✕ 清除</button>
             </div>
           </div>
-          <div v-if="isLocalFile" class="file-badge">📁 {{ fileName || '本地文件' }}</div>
+          <div v-if="fileName" class="file-badge">📁 {{ fileName }}</div>
         </template>
         <template v-else>
           <div class="img-placeholder" @click.stop="triggerUpload">

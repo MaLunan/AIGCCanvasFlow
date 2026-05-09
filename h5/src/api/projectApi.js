@@ -26,4 +26,14 @@ export const projectApi = {
   /** 删除项目 */
   delete: (id) =>
     request.delete(`/canvas/projects/${id}`),
+
+  /** 上传资产文件（图片/视频），返回 { url, ... } */
+  uploadAsset: (file, type = 'other') => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('type', type)
+    // 不手动设 Content-Type，让 axios 自动附加 multipart boundary
+    // 视频文件较大，超时设为 5 分钟
+    return request.post('/canvas/assets', formData, { timeout: 300000 })
+  },
 }

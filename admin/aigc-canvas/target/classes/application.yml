@@ -49,6 +49,13 @@ springdoc:
   api-docs:
     path: /v3/api-docs
 
+file:
+  storage:
+    # 本地文件存储目录（可改为绝对路径，如 /data/aigc/uploads）
+    path: ${user.home}/aigc-canvas-uploads
+    # 文件访问基础 URL（开发环境直连 8084；生产环境改为域名）
+    base-url: http://127.0.0.1:8084
+
 snowflake:
   worker-id: 1   # 节点 ID，多实例部署时每个实例设置不同值（0-31）
 
