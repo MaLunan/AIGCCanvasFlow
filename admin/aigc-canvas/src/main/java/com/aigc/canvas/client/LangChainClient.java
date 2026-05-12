@@ -19,29 +19,48 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * LangChain Python 服务 HTTP 客户端。
- * 封装对 FastAPI 各接口的调用，统一处理异常。
+ * LangChain Python 服务 HTTP 客户端
+ * 封装对 FastAPI 各接口的调用，统一处理网络异常和错误响应
+ * - /api/v1/polish/text：同步文字润化
+ * - /api/v1/t2i/generate：异步文字生图（返回 task_id）
+ * - /api/v1/t2v/generate：异步文字生视频（返回 task_id）
+ * - /api/v1/tasks/{taskId}：任务状态查询
+ *
+ * 异常处理策略：
+ * - 4xx（客户端错误）：从 FastAPI 响应体提取 detail 字段，透传给前端
+ * - 5xx（服务端错误）：记录 error 日志，抛出 502 让前端知道下游服务出错
+ * - 连接失败（超时/拒绝）：记录 error 日志，抛出 503 提示服务未启动
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class LangChainClient {
 
+    /** LangChain 服务地址（默认 localhost:8000，通过 Nacos 配置覆盖） */
     @Value("${langchain.base-url:http://localhost:8000}")
     private String baseUrl;
 
+    // RestTemplate 由 RestTemplateConfig 配置（含超时设置）
     private final RestTemplate restTemplate;
 
     // ── 文字润化（同步，直接返回结果）────────────────────────────────────────
 
     /**
-     * 调用润化接口，返回润化后的文本。
+     * 调用润化接口，返回润化后的文本
+     * 将 canvas 上下文（上游节点内容）传给 LangChain，作为 LLM 的参考信息
+     *
+     * @param text            待润化文本
+     * @param context         上游节点上下文列表（可为 null）
+     * @param apiKey          用户/平台的 LLM API Key（空字符串时 LangChain 使用默认配置）
+     * @param baseUrlOverride 用户自定义的 LLM Base URL（如私有部署的 OpenAI 兼容接口）
+     * @param modelName       模型名称（如 gpt-4o、qwen-max）
      */
     @SuppressWarnings("unchecked")
     public String polish(String text, List<ContextItem> context,
                          String apiKey, String baseUrlOverride, String modelName) {
         String url = baseUrl + "/api/v1/polish/text";
 
+        // 将 ContextItem 列表转为 LangChain 期望的 Map 列表格式（过滤空内容节点）
         List<Map<String, String>> ctxList = context == null ? List.of() :
                 context.stream()
                         .filter(c -> c.getContent() != null && !c.getContent().isBlank())
@@ -54,6 +73,7 @@ public class LangChainClient {
                         })
                         .toList();
 
+        // 构造请求体，null 值替换为空字符串（FastAPI Pydantic 校验不接受 null）
         Map<String, Object> body = new HashMap<>();
         body.put("text", text);
         body.put("context", ctxList);
@@ -68,7 +88,7 @@ public class LangChainClient {
             if (data == null || !data.containsKey("polished")) {
                 throw new BusinessException(500, "润化服务返回数据异常");
             }
-            return (String) data.get("polished");
+            return (String) data.get("polished"); // 提取润化后的文本
         } catch (HttpClientErrorException e) {
             String detail = extractDetail(e);
             log.warn("[LangChain] polish 400/4xx: {}", detail);
@@ -85,30 +105,32 @@ public class LangChainClient {
     // ── 文字生图（异步，返回 task_id）────────────────────────────────────────
 
     /**
-     * 提交文字生图任务，返回 LangChain task_id。
+     * 提交文字生图任务，返回 LangChain task_id（异步）
+     * 前端轮询 /api/v1/tasks/{taskId} 获取进度和结果
      *
-     * @param prompt       用户描述
-     * @param lcModel      LangChain 模型标识（dalle3 / flux / sdxl）
-     * @param aspect       宽高比（1:1 / 16:9 …）
+     * @param prompt  用户描述（prompt）
+     * @param lcModel LangChain 模型标识（dalle3 / flux / sdxl）
+     * @param aspect  宽高比（1:1 / 16:9 / 9:16 / 4:3 / 3:4）
      */
     @SuppressWarnings("unchecked")
     public String submitT2I(String prompt, String lcModel, String aspect) {
         String url = baseUrl + "/api/v1/t2i/generate";
 
+        // 将宽高比字符串转换为像素尺寸 [width, height]
         int[] wh = aspectToSize(aspect);
         Map<String, Object> body = new HashMap<>();
         body.put("prompt", prompt);
-        body.put("model", lcModel != null ? lcModel : "flux");
+        body.put("model", lcModel != null ? lcModel : "flux"); // 未指定时默认使用 flux
         body.put("style", "default");
         body.put("width", wh[0]);
         body.put("height", wh[1]);
-        body.put("num_images", 1);
-        body.put("enhance_prompt", true);
+        body.put("num_images", 1);        // 固定生成 1 张
+        body.put("enhance_prompt", true); // 开启 prompt 增强（LangChain 侧自动补充细节）
 
         try {
             log.info("[LangChain] POST {} model={} aspect={}", url, lcModel, aspect);
             ResponseEntity<Map> resp = restTemplate.postForEntity(url, body, Map.class);
-            return extractTaskId(resp.getBody());
+            return extractTaskId(resp.getBody()); // 从响应体中提取 task_id
         } catch (HttpClientErrorException e) {
             String detail = extractDetail(e);
             log.warn("[LangChain] submitT2I 4xx: {}", detail);
@@ -125,29 +147,30 @@ public class LangChainClient {
     // ── 文字生视频（异步，返回 task_id）──────────────────────────────────────
 
     /**
-     * 提交文字生视频任务，返回 LangChain task_id。
+     * 提交文字生视频任务，返回 LangChain task_id（异步）
+     * 对入参做合法性限制（LangChain T2V 的参数范围约束）
      *
      * @param prompt     用户描述
      * @param lcModel    LangChain 模型标识（kling / wan / minimax）
-     * @param duration   时长（秒）
+     * @param duration   时长（秒），会被限制在 [3, 10] 范围内
      * @param resolution 分辨率（480p / 720p / 1080p / 4K → 自动降级到 1080p）
-     * @param aspect     宽高比
+     * @param aspect     宽高比（仅支持 16:9 / 9:16 / 1:1，其他降级为 16:9）
      */
     @SuppressWarnings("unchecked")
     public String submitT2V(String prompt, String lcModel,
                             int duration, String resolution, String aspect) {
         String url = baseUrl + "/api/v1/t2v/generate";
 
-        // LangChain T2V 仅支持 480p / 720p / 1080p
+        // LangChain T2V 不支持 4K，降级为 1080p
         String safeRes = "4K".equalsIgnoreCase(resolution) ? "1080p" : resolution;
-        // LangChain T2V duration 范围 3~10，超出则限制
+        // LangChain T2V duration 范围 3~10 秒，超出则截断
         int safeDur = Math.max(3, Math.min(10, duration));
-        // aspect_ratio 仅支持 16:9 / 9:16 / 1:1
+        // LangChain T2V 宽高比只支持 16:9 / 9:16 / 1:1，其他降级为 16:9
         String safeAspect = List.of("16:9", "9:16", "1:1").contains(aspect) ? aspect : "16:9";
 
         Map<String, Object> body = new HashMap<>();
         body.put("prompt", prompt);
-        body.put("model", lcModel != null ? lcModel : "kling");
+        body.put("model", lcModel != null ? lcModel : "kling"); // 未指定时默认 kling
         body.put("duration", safeDur);
         body.put("resolution", safeRes);
         body.put("aspect_ratio", safeAspect);
@@ -173,7 +196,8 @@ public class LangChainClient {
     // ── 任务状态查询 ──────────────────────────────────────────────────────────
 
     /**
-     * 查询 LangChain 任务状态。
+     * 查询 LangChain 任务状态（前端轮询调用）
+     * 返回原始 Map，由 AgentServiceImpl 做状态映射和 VO 封装
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> queryTask(String taskId) {
@@ -197,6 +221,7 @@ public class LangChainClient {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    /** 从响应 body 中提取 task_id 字段，缺少时抛出异常 */
     @SuppressWarnings("unchecked")
     private String extractTaskId(Map body) {
         if (body == null || !body.containsKey("task_id")) {
@@ -206,8 +231,9 @@ public class LangChainClient {
     }
 
     /**
-     * 从 FastAPI HTTPException 响应体中提取 detail 字段。
-     * FastAPI 错误格式：{"detail": "..."}
+     * 从 FastAPI HTTPException 响应体中提取 detail 字段
+     * FastAPI 4xx 错误格式：{"detail": "错误描述"}
+     * 解析失败时降级返回 Spring 的原始错误消息
      */
     private String extractDetail(HttpClientErrorException e) {
         try {
@@ -215,18 +241,21 @@ public class LangChainClient {
             JsonNode detail = node.get("detail");
             if (detail != null && !detail.isNull()) return detail.asText();
         } catch (Exception ignored) {}
-        return e.getMessage();
+        return e.getMessage(); // 解析失败时返回原始消息
     }
 
-    /** 宽高比 → [width, height]，供 T2I 接口使用 */
+    /**
+     * 将宽高比字符串转换为 T2I 接口需要的 [width, height] 像素尺寸
+     * 使用标准 HD/Full HD 分辨率，兼顾质量和生成速度
+     */
     private int[] aspectToSize(String aspect) {
-        if (aspect == null) return new int[]{1024, 1024};
+        if (aspect == null) return new int[]{1024, 1024}; // 默认 1:1
         return switch (aspect) {
-            case "16:9"  -> new int[]{1280, 720};
-            case "9:16"  -> new int[]{720, 1280};
-            case "4:3"   -> new int[]{1024, 768};
-            case "3:4"   -> new int[]{768, 1024};
-            default      -> new int[]{1024, 1024};  // 1:1
+            case "16:9"  -> new int[]{1280, 720};   // 横屏 HD
+            case "9:16"  -> new int[]{720, 1280};   // 竖屏（手机壁纸）
+            case "4:3"   -> new int[]{1024, 768};   // 传统比例
+            case "3:4"   -> new int[]{768, 1024};   // 竖版传统
+            default      -> new int[]{1024, 1024};  // 1:1（正方形）
         };
     }
 }

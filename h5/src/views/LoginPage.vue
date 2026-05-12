@@ -1,24 +1,28 @@
 <script setup>
+// 登录/注册页面：包含两个 Tab，共用 loading/error 状态，注册成功后自动登录
 import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 
-const router = useRouter()
-const route = useRoute()
+const router    = useRouter()
+const route     = useRoute()   // 用于读取 redirect 参数（从受保护页面跳转过来时携带）
 const authStore = useAuthStore()
 
-const tab = ref('login') // 'login' | 'register'
-const loading = ref(false)
-const error = ref('')
+const tab     = ref('login')  // 当前激活的 Tab：'login' | 'register'
+const loading = ref(false)    // 请求进行中（禁用提交按钮）
+const error   = ref('')       // 错误提示信息
 
-const loginForm = reactive({ username: '', password: '' })
+// 用 reactive 管理表单数据，方便直接 v-model 绑定
+const loginForm    = reactive({ username: '', password: '' })
 const registerForm = reactive({ username: '', password: '', confirmPassword: '', email: '' })
 
+/** 切换 Tab 时清空错误提示 */
 function switchTab(t) {
-  tab.value = t
+  tab.value   = t
   error.value = ''
 }
 
+/** 登录处理：前端校验 → authStore.login → 跳转到目标页 */
 async function handleLogin() {
   error.value = ''
   if (!loginForm.username || !loginForm.password) {
@@ -28,6 +32,7 @@ async function handleLogin() {
   loading.value = true
   try {
     await authStore.login({ username: loginForm.username, password: loginForm.password })
+    // 登录成功后跳回原本要访问的页面，没有 redirect 则默认去项目列表
     const redirect = route.query.redirect || '/projects'
     router.push(redirect)
   } catch (e) {
@@ -37,12 +42,15 @@ async function handleLogin() {
   }
 }
 
+/** 注册处理：前端校验 → authStore.register → 自动登录 → 跳转项目列表 */
 async function handleRegister() {
   error.value = ''
+  // 基础必填校验
   if (!registerForm.username || !registerForm.password || !registerForm.email) {
     error.value = '请填写所有必填项'
     return
   }
+  // 两次密码一致性校验
   if (registerForm.password !== registerForm.confirmPassword) {
     error.value = '两次输入的密码不一致'
     return
@@ -52,9 +60,9 @@ async function handleRegister() {
     await authStore.register({
       username: registerForm.username,
       password: registerForm.password,
-      email: registerForm.email,
+      email:    registerForm.email,
     })
-    // Auto login after register
+    // 注册成功后自动登录，提升用户体验（无需二次填写）
     await authStore.login({ username: registerForm.username, password: registerForm.password })
     router.push('/projects')
   } catch (e) {

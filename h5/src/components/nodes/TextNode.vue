@@ -20,19 +20,22 @@ const router = useRouter()
 const { getNodes } = useVueFlow()
 const editing = ref(false)
 const textareaRef = ref(null)
+// 编辑时的本地副本，避免直接修改 props.data（单向数据流）
 const localContent = ref(props.data.content || '')
 
 async function startEdit() {
   editing.value = true
   localContent.value = props.data.content || ''
+  // 等待 textarea 渲染完成后再 focus，避免无法获得焦点
   await nextTick()
   textareaRef.value?.focus()
-  textareaRef.value?.select()
+  textareaRef.value?.select()  // 全选方便用户直接覆盖
 }
 
 function stopEdit() {
   if (!editing.value) return
   editing.value = false
+  // 保存编辑内容：content 用于显示，outputValue 用于数据流传播
   store.updateNodeData(props.id, {
     content: localContent.value,
     outputValue: localContent.value,
@@ -40,29 +43,33 @@ function stopEdit() {
 }
 
 function onKeydown(e) {
-  if (e.key === 'Escape') stopEdit()
-  if (e.key === 'Enter' && e.ctrlKey) stopEdit()
-  e.stopPropagation()
+  if (e.key === 'Escape') stopEdit()           // Esc：取消编辑
+  if (e.key === 'Enter' && e.ctrlKey) stopEdit() // Ctrl+Enter：保存
+  e.stopPropagation()  // 阻止键盘事件冒泡到 VueFlow（避免触发删除等快捷键）
 }
 
 // ── 模型库（文本类） ──────────────────────────────────────────────────────────
+// 只过滤分类为"文本"且已启用的模型，供润化功能使用
 const textModels = computed(() =>
   modelStore.libraryModels.filter(m => m.category === '文本' && m.enabled)
 )
-const polishModel = ref('')
+const polishModel = ref('')  // 当前选中的润化模型 ID（字符串形式）
 
 onMounted(() => {
+  // 按需加载模型库，避免重复请求
   if (!modelStore.libraryModels.length && !modelStore.libraryLoading) {
     modelStore.loadLibrary()
   }
 })
 
+// 当模型列表变化时，自动选中第一个可用模型（如果当前选择已失效）
 watch(textModels, (models) => {
   if (models.length && !models.find(m => String(m.id) === polishModel.value)) {
     polishModel.value = String(models[0].id)
   }
 }, { immediate: true })
 
+// 特殊 sentinel 值处理：选择"去广场添加"时跳转模型页
 watch(polishModel, (val) => {
   if (val === '__goto_market__') {
     polishModel.value = textModels.value[0] ? String(textModels.value[0].id) : ''
@@ -81,10 +88,12 @@ async function polishTextContent() {
   polishing.value = true
   polishError.value = ''
   try {
+    // 收集上游节点的上下文，作为 AI 润化的参考信息
     const context = store.getUpstreamContext(props.id)
     const polished = await polishText(text, Number(polishModel.value), context)
+    // 传入 getNodes.value 快照，避免更新时覆盖已拖拽节点的最新坐标
     store.updateNodeData(props.id, { content: polished, outputValue: polished }, getNodes.value)
-    localContent.value = polished
+    localContent.value = polished  // 同步更新本地编辑副本
   } catch (e) {
     polishError.value = e?.message || '润化失败，请重试'
   } finally {

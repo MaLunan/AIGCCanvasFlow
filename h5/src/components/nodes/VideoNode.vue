@@ -29,20 +29,29 @@ const fileInputRef = ref(null)
 // ── mode: determined by node type ────────────────────────────────────────────
 const isGenMode = computed(() => props.type === 'videoGenNode')
 
-const GAP = 24
+// ── 自动布局：寻找不与现有节点重叠的放置位置 ─────────────────────────────
+const GAP = 24  // 节点间距（px）
+
+/** 判断两个矩形（含 GAP 间距）是否重叠 */
 function overlaps(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw + GAP && ax + aw + GAP > bx && ay < by + bh + GAP && ay + ah + GAP > by
 }
+
+/**
+ * 从 startX 列开始，向下寻找第一个不与任何现有节点重叠的位置
+ * 用于视频帧截图生成图片节点时，自动避开已有节点
+ */
 function findFreePosition(startX, startY, newW, newH) {
   const all = getNodes.value
   let y = startY
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 30; i++) {  // 最多尝试 30 次，防止死循环
     const blocked = all.some(n => {
       const nw = n.dimensions?.width ?? 220
       const nh = n.dimensions?.height ?? 120
       return overlaps(startX, y, newW, newH, n.position.x, n.position.y, nw, nh)
     })
-    if (!blocked) return { x: startX, y }
+    if (!blocked) return { x: startX, y }  // 找到空位，返回
+    // 找到该列所有重叠节点的最底部，从那里往下继续尝试
     const colNodes = all.filter(n => {
       const nw = n.dimensions?.width ?? 220
       return n.position.x < startX + newW + GAP && n.position.x + nw + GAP > startX
@@ -57,15 +66,19 @@ function findFreePosition(startX, startY, newW, newH) {
 const fileName = ref(props.data.fileName || '')
 const uploading = ref(false)
 
-// ── video.js ────────────────────────────────────────────────────────────────
-let vjsPlayer = null
+// ── video.js 播放器 ──────────────────────────────────────────────────────────
+let vjsPlayer = null  // video.js 播放器实例（非响应式，避免性能开销）
 
+/**
+ * Vue 的 :ref 函数式写法：el 非空时初始化播放器，el 为 null 时销毁
+ * 相比 onMounted，这种方式能更精确地处理 v-if 切换时的生命周期
+ */
 function onVideoMounted(el) {
   if (!el) { destroyVjs(); return }
   vjsPlayer = videojs(el, {
     controls: true,
     autoplay: false,
-    preload: 'metadata',
+    preload: 'metadata',  // 只预加载元数据，节省带宽
     fluid: false,
     width: 280,
     height: 160,
@@ -73,41 +86,52 @@ function onVideoMounted(el) {
   if (props.data.src) vjsPlayer.src({ src: props.data.src, type: 'video/mp4' })
 }
 
+/** 销毁播放器，释放内存和媒体资源 */
 function destroyVjs() {
   if (vjsPlayer) { vjsPlayer.dispose(); vjsPlayer = null }
 }
 
+// 当视频源变化时更新播放器
 watch(() => props.data.src, (src) => {
   if (vjsPlayer && src) vjsPlayer.src({ src, type: 'video/mp4' })
 })
 
+// 组件卸载时销毁播放器（避免内存泄漏）
 onBeforeUnmount(destroyVjs)
 
+/** 供 VideoFrameStrip 调用：跳转到帧条点击位置对应的视频时间点 */
 function seekTo(seconds) {
   if (vjsPlayer) vjsPlayer.currentTime(seconds)
 }
 
-// ── generate image node from frame ──────────────────────────────────────────
+// ── 从视频帧生成图片节点 ─────────────────────────────────────────────────────
 const generatingFrame = ref(false)
 
+/**
+ * 点击帧条中的帧时，高清截取该帧并在画布上创建一个新的图片节点
+ * @param {object} frame - { time: number（秒）, dataUrl: string（缩略图）}
+ */
 async function generateImageFromFrame(frame) {
-  if (generatingFrame.value) return
+  if (generatingFrame.value) return  // 防止并发点击
   generatingFrame.value = true
   try {
+    // 以视频原始分辨率截取指定时间点的帧（PNG 格式）
     const hdDataUrl = await captureFrameHD(props.data.src, frame.time)
-    const blob = dataUrlToBlob(hdDataUrl)
+    const blob    = dataUrlToBlob(hdDataUrl)
     const blobUrl = URL.createObjectURL(blob)
 
+    // 获取当前视频节点的位置和尺寸，用于计算新节点放置位置
     const src = findNode(props.id)
-    const x = src?.position?.x ?? 0
-    const y = src?.position?.y ?? 0
-    const w = src?.dimensions?.width ?? 280
+    const x   = src?.position?.x ?? 0
+    const y   = src?.position?.y ?? 0
+    const w   = src?.dimensions?.width ?? 280
 
     const NEW_W = 240
     const NEW_H = 120
+    // 在视频节点右侧 80px 处找到不重叠的放置位置
     const pos = findFreePosition(x + w + 80, y, NEW_W, NEW_H)
 
-    const newId = `image-frame-${props.id}-${Date.now()}`
+    const newId   = `image-frame-${props.id}-${Date.now()}`
     const newNode = {
       id: newId,
       type: 'imageNode',
@@ -117,10 +141,11 @@ async function generateImageFromFrame(frame) {
         src: blobUrl,
         outputValue: blobUrl,
         fileName: `frame_${fmtFrameTime(frame.time)}.png`,
-        fromFrame: true,
+        fromFrame: true,  // 标记为帧截图来源，区别于普通上传图片
       },
     }
 
+    // 合并 VueFlow 最新位置快照，防止异步操作后节点位置被重置
     const vfSnapshot = getNodes.value
     store.nodes = [
       ...store.nodes.map((n) => {
@@ -130,6 +155,7 @@ async function generateImageFromFrame(frame) {
       newNode,
     ]
 
+    // 自动连接视频节点 → 图片节点
     store.addEdge({
       id: `edge-${props.id}-${newId}-${Date.now()}`,
       source: props.id,
@@ -142,19 +168,21 @@ async function generateImageFromFrame(frame) {
   }
 }
 
+/** 将 base64 data URL 转换为 Blob（用于 URL.createObjectURL）*/
 function dataUrlToBlob(dataUrl) {
   const [header, data] = dataUrl.split(',')
-  const mime = header.match(/:(.*?);/)[1]
-  const binary = atob(data)
-  const arr = new Uint8Array(binary.length)
+  const mime   = header.match(/:(.*?);/)[1]    // 提取 MIME 类型
+  const binary = atob(data)                     // base64 解码为二进制字符串
+  const arr    = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i)
   return new Blob([arr], { type: mime })
 }
 
+/** 将秒数格式化为 "分-秒" 字符串，用于图片节点的标签名 */
 function fmtFrameTime(sec) {
   const m = Math.floor(sec / 60)
   const s = Math.floor(sec % 60)
-  return `${m}-${String(s).padStart(2, '0')}`
+  return `${m}-${String(s).padStart(2, '0')}`  // 如 "1-05" 表示 1分05秒
 }
 
 // ── upload / clear ──────────────────────────────────────────────────────────

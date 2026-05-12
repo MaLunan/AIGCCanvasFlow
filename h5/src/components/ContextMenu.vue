@@ -1,17 +1,20 @@
 <script setup>
+// 右键上下文菜单：根据点击目标类型（节点/边/画布）显示不同操作项
+// 通过 Teleport 挂载到 body，确保不受父组件 overflow:hidden 的影响
 const props = defineProps({
   visible: Boolean,
-  x: Number,
-  y: Number,
-  target: Object,     // null = pane, otherwise node object
+  x: Number,          // 鼠标 X 坐标（clientX）
+  y: Number,          // 鼠标 Y 坐标（clientY）
+  target: Object,     // null = 画布空白区域，否则为节点或边对象
   targetType: String, // 'node' | 'edge' | 'pane'
 })
 
 const emit = defineEmits(['action', 'close'])
 
+/** 触发操作并自动关闭菜单 */
 function act(action) {
-  emit('action', action)
-  emit('close')
+  emit('action', action)  // 通知父组件执行对应操作
+  emit('close')           // 关闭菜单
 }
 </script>
 

@@ -21,6 +21,7 @@ class I2VRequest(BaseModel):
 
     @model_validator(mode="after")
     def check_image_input(self):
+        """校验图片输入：image_url 和 image_base64 必须提供其中一个"""
         if not self.image_url and not self.image_base64:
             raise ValueError("必须提供 image_url 或 image_base64")
         return self
@@ -33,7 +34,12 @@ class TaskResponse(BaseModel):
 
 @router.post("/generate", response_model=TaskResponse, summary="图生视频")
 def generate(req: I2VRequest):
+    """
+    提交图生视频异步任务：
+    - 支持 image_url（直接传 URL）或 image_base64（base64 字符串）两种图片输入方式
+    - I2VChain 内部会将 base64 上传为持久 URL 后再提交给视频模型
+    """
     params = req.model_dump()
     task_id = create_task("i2v", params)
-    run_i2v.delay(task_id, params)
+    run_i2v.delay(task_id, params)  # 异步提交，立即返回 task_id
     return TaskResponse(task_id=task_id)

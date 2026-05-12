@@ -1,13 +1,15 @@
 <script setup>
+// 顶部导航栏：品牌标识 + 导航链接 + 登录/用户状态区域
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 import { storeToRefs } from 'pinia'
 
-const router = useRouter()
-const route  = useRoute()
+const router    = useRouter()
+const route     = useRoute()     // 用于高亮当前激活的导航项
 const authStore = useAuthStore()
 const { isLoggedIn, username } = storeToRefs(authStore)
 
+// 顶部导航链接列表
 const navItems = [
   { label: '首页',     to: '/' },
   { label: '我的项目', to: '/projects' },
@@ -15,6 +17,7 @@ const navItems = [
   { label: '帮助',     to: '/help' },
 ]
 
+/** 退出登录：清除 store + localStorage 凭证，跳转首页 */
 function handleLogout() {
   authStore.logout()
   router.push('/')

@@ -1,7 +1,13 @@
+"""
+全局配置管理 —— 基于 pydantic-settings，从 .env 文件读取环境变量
+所有字段均有默认值（空字符串），未配置的服务功能不可用
+使用方式：from app.config import settings
+"""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # 从项目根目录的 .env 文件读取配置，UTF-8 编码
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # ── OpenAI ────────────────────────────────────────────────────────────────
@@ -39,7 +45,8 @@ class Settings(BaseSettings):
 
     # ── 应用 ──────────────────────────────────────────────────────────────────
     debug: bool = False
-    task_expire_seconds: int = 86400   # 任务结果保留 24h
+    task_expire_seconds: int = 86400   # 任务结果保留 24h（Redis key TTL）
 
 
+# 全局单例，其他模块通过 from app.config import settings 直接使用
 settings = Settings()

@@ -40,9 +40,10 @@ class BatchTaskResponse(BaseModel):
 
 @router.post("/generate", response_model=TaskResponse, summary="文字生视频")
 def generate(req: T2VRequest):
+    """提交单段文字生视频任务（异步），返回 task_id 供前端轮询"""
     params = req.model_dump()
     task_id = create_task("t2v", params)
-    run_t2v.delay(task_id, params)
+    run_t2v.delay(task_id, params)  # 异步提交到 Celery，立即返回
     return TaskResponse(task_id=task_id)
 
 
@@ -51,15 +52,16 @@ def generate_from_script(req: ScriptT2VRequest):
     """将完整脚本拆分为分镜，为每个分镜提交独立的生成任务"""
     from app.chains.script_splitter import split_script
 
+    # 调用 LangChain script_splitter 将长脚本拆分为分镜列表
     shots = split_script(req.script, target_duration=req.duration_per_shot)
     task_ids = []
     for shot in shots:
         params = {
-            "prompt": shot["prompt"],
+            "prompt": shot["prompt"],          # 分镜英文提示词（script_splitter 已翻译）
             "model": req.model,
             "duration": shot.get("duration", req.duration_per_shot),
             "aspect_ratio": req.aspect_ratio,
-            "enhance_prompt": False,  # 脚本拆镜已增强过
+            "enhance_prompt": False,  # 脚本拆镜时 LLM 已生成英文 prompt，无需再次增强
         }
         task_id = create_task("t2v", params)
         run_t2v.delay(task_id, params)

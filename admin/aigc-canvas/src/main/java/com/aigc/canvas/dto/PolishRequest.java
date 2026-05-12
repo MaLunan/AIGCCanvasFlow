@@ -6,6 +6,11 @@ import lombok.Data;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 文字润化请求 DTO
+ * 调用同步接口 POST /canvas/agent/polish，直接返回润化后文本（非异步任务）
+ * libraryModelId 指定用户模型库中的文本类模型；不传则系统自动选择默认文本模型
+ */
 @Data
 public class PolishRequest {
 

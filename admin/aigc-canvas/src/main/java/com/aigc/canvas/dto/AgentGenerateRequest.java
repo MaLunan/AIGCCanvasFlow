@@ -6,6 +6,11 @@ import lombok.Data;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * AI 生图/生视频任务提交请求 DTO
+ * 提交后返回 taskId，前端通过轮询 /canvas/agent/task/{taskId} 查询进度
+ * targetType 默认 video；modelKey 与 libraryModelId 至少传一个（libraryModelId 优先）
+ */
 @Data
 public class AgentGenerateRequest {
 

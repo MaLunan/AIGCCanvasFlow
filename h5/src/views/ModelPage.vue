@@ -1,4 +1,5 @@
 <script setup>
+// 模型中心页面：模型广场（公开浏览）+ 用户模型库（需登录）
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useModelStore } from '../stores/modelStore'
@@ -6,7 +7,7 @@ import { useAuthStore } from '../stores/authStore'
 import { storeToRefs } from 'pinia'
 import AppNavbar from '../components/AppNavbar.vue'
 
-const router = useRouter()
+const router     = useRouter()
 const modelStore = useModelStore()
 const { isLoggedIn } = storeToRefs(useAuthStore())
 const {
@@ -14,17 +15,19 @@ const {
   libraryModels, libraryLoading, libraryError,
 } = storeToRefs(modelStore)
 
-// ── Tabs ─────────────────────────────────────────────────────────────────────
-const activeTab = ref('market')
+// ── Tab 切换 ─────────────────────────────────────────────────────────────────
+const activeTab = ref('market')  // 'market' | 'library'
 
-// ── Market filter ─────────────────────────────────────────────────────────────
-const categories = ['全部', '视频', '图像', '音频', '文本']
+// ── 模型广场筛选 ──────────────────────────────────────────────────────────────
+const categories     = ['全部', '视频', '图像', '音频', '文本']
 const marketCategory = ref('全部')
-const marketSearch = ref('')
+const marketSearch   = ref('')
 
-// 切换分类时重新请求（search 只在前端过滤，避免频繁请求）
+// 切换分类时重新请求后端数据（分类由后端过滤）
+// 搜索词只在前端过滤，避免频繁触发网络请求
 watch(marketCategory, (cat) => modelStore.loadMarket(cat))
 
+/** 前端过滤：按名称/厂商/标签匹配搜索词 */
 const filteredMarket = computed(() => {
   if (!marketSearch.value) return marketModels.value
   const q = marketSearch.value.toLowerCase()
@@ -35,22 +38,25 @@ const filteredMarket = computed(() => {
   )
 })
 
-// ── Library filter ────────────────────────────────────────────────────────────
+// ── 模型库筛选 ────────────────────────────────────────────────────────────────
 const libCategory = ref('全部')
+/** 前端按分类过滤模型库（无需请求后端） */
 const filteredLibrary = computed(() => {
   if (libCategory.value === '全部') return libraryModels.value
   return libraryModels.value.filter(m => m.category === libCategory.value)
 })
 
-// ── Load data on mount ────────────────────────────────────────────────────────
+// ── 数据初始化 ────────────────────────────────────────────────────────────────
 onMounted(() => {
-  modelStore.loadMarket()
-  if (isLoggedIn.value) modelStore.loadLibrary()
+  modelStore.loadMarket()                            // 广场无需登录
+  if (isLoggedIn.value) modelStore.loadLibrary()    // 已登录则同时加载个人库
 })
 
-// ── Add to library ────────────────────────────────────────────────────────────
-const addingId = ref(null)
+// ── 添加到模型库 ──────────────────────────────────────────────────────────────
+const addingId = ref(null)  // 当前正在添加的模型 key（控制加载状态）
 const addError = ref('')
+
+/** 将广场模型添加到用户库，未登录则跳转登录页 */
 async function handleAddToLibrary(model) {
   if (!isLoggedIn.value) { router.push('/login'); return }
   addingId.value = model.modelKey
@@ -59,48 +65,58 @@ async function handleAddToLibrary(model) {
     await modelStore.addMarketToLibrary(model)
   } catch (e) {
     addError.value = e?.response?.data?.message ?? '添加失败'
+    // 3 秒后自动清除错误提示
     setTimeout(() => { addError.value = '' }, 3000)
   } finally {
     addingId.value = null
   }
 }
 
-// ── Custom model form ─────────────────────────────────────────────────────────
-const showCustomForm = ref(false)
-const editingLibraryId = ref(null)
-const formLoading = ref(false)
-const customForm = ref({
+// ── 自定义模型表单 ────────────────────────────────────────────────────────────
+const showCustomForm   = ref(false)
+const editingLibraryId = ref(null)    // 非 null 表示编辑模式，null 表示新增模式
+const formLoading      = ref(false)
+const customForm       = ref({
   name: '', category: '文本', description: '',
   apiEndpoint: '', apiKey: '', icon: '⚙️', color: '#646cff',
 })
 const customIcons = ['⚙️', '🤖', '💡', '🧠', '🔮', '⚡', '🌐', '🎯']
 
+/**
+ * 打开自定义模型弹窗
+ * @param {object|null} model - 传入 model 表示编辑，null 表示新建
+ */
 function openCustomForm(model = null) {
   if (model) {
+    // 编辑模式：回填除 apiKey 以外的字段（API Key 不回显，安全考虑）
     editingLibraryId.value = model.id
     customForm.value = {
-      name: model.name ?? '',
-      category: model.category ?? '文本',
+      name:        model.name        ?? '',
+      category:    model.category    ?? '文本',
       description: model.description ?? '',
       apiEndpoint: model.apiEndpoint ?? '',
-      apiKey: '',   // 不回显真实 key
-      icon: model.icon ?? '⚙️',
-      color: model.color ?? '#646cff',
+      apiKey:      '',  // 留空表示不修改现有 key
+      icon:        model.icon        ?? '⚙️',
+      color:       model.color       ?? '#646cff',
     }
   } else {
+    // 新建模式：重置表单
     editingLibraryId.value = null
     customForm.value = { name: '', category: '文本', description: '', apiEndpoint: '', apiKey: '', icon: '⚙️', color: '#646cff' }
   }
   showCustomForm.value = true
 }
 
+/** 提交自定义模型：新增 or 更新，成功后关闭弹窗 */
 async function submitCustomForm() {
   if (!customForm.value.name.trim()) return
   formLoading.value = true
   try {
     if (editingLibraryId.value) {
+      // 编辑模式
       await modelStore.updateCustom(editingLibraryId.value, { ...customForm.value })
     } else {
+      // 新增模式：创建后切换到"我的模型库" Tab 以查看新增的模型
       await modelStore.addCustom({ ...customForm.value })
       activeTab.value = 'library'
     }
@@ -112,20 +128,23 @@ async function submitCustomForm() {
   }
 }
 
-// ── Toggle / Remove ───────────────────────────────────────────────────────────
-const togglingId = ref(null)
+// ── 启用/禁用 & 移除 ─────────────────────────────────────────────────────────
+const togglingId = ref(null)  // 当前正在切换状态的模型 ID
 async function handleToggle(model) {
   togglingId.value = model.id
   try { await modelStore.toggleEnabled(model.id) } finally { togglingId.value = null }
 }
 
-const removingId = ref(null)
+const removingId = ref(null)  // 当前正在移除的模型 ID
 async function handleRemove(model) {
   removingId.value = model.id
   try { await modelStore.removeFromLib(model.id) } finally { removingId.value = null }
 }
 
-// 当切换到模型库 Tab 时懒加载
+/**
+ * 切换到"我的模型库" Tab，同时懒加载数据
+ * 如果已有数据则不重复请求，减少不必要的 API 调用
+ */
 function switchToLibrary() {
   activeTab.value = 'library'
   if (isLoggedIn.value && libraryModels.value.length === 0 && !libraryLoading.value) {

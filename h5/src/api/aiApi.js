@@ -1,3 +1,4 @@
+// AI 生成接口：文字润化（同步）+ 生图/生视频（异步轮询）
 import request from './request'
 
 /**
@@ -8,6 +9,7 @@ import request from './request'
  * @returns {Promise<string>} 润化后的文本
  */
 export function polishText(text, libraryModelId, context = []) {
+  // 超时设 120s，AI 润化响应时间视模型而定
   return request.post('/canvas/agent/polish', { text, libraryModelId, context }, { timeout: 120000 })
 }
 
@@ -18,11 +20,11 @@ export function polishText(text, libraryModelId, context = []) {
  */
 export function submitImageGen(params) {
   return request.post('/canvas/agent/generate', {
-    targetType: 'image',
+    targetType: 'image',              // 告知后端生成类型
     prompt: params.prompt,
     libraryModelId: params.libraryModelId,
-    aspect: params.aspect || '1:1',
-    context: params.context || [],
+    aspect: params.aspect || '1:1',   // 默认正方形比例
+    context: params.context || [],    // 上游节点上下文信息
   })
 }
 
@@ -33,13 +35,13 @@ export function submitImageGen(params) {
  */
 export function submitVideoGen(params) {
   return request.post('/canvas/agent/generate', {
-    targetType: 'video',
+    targetType: 'video',                        // 告知后端生成类型
     prompt: params.prompt,
     libraryModelId: params.libraryModelId,
-    aspect: params.aspect || '16:9',
-    duration: parseInt(params.duration) || 5,
-    resolution: params.resolution || '1080p',
-    audio: params.audio || 'sound',
+    aspect: params.aspect || '16:9',            // 默认横屏宽高比
+    duration: parseInt(params.duration) || 5,   // 视频时长（秒），强制转整数
+    resolution: params.resolution || '1080p',   // 默认 1080p 分辨率
+    audio: params.audio || 'sound',             // 是否含音效
     context: params.context || [],
   })
 }
@@ -57,22 +59,30 @@ export function pollTask(taskId, onProgress, intervalMs = 2500, timeoutMs = 300_
     const start = Date.now()
 
     async function tick() {
+      // 超过最大等待时间，主动终止轮询
       if (Date.now() - start > timeoutMs) {
         return reject(new Error('任务超时，请稍后重试'))
       }
       try {
+        // 查询后端任务状态，返回 { status, progress, resultUrl, error }
         const data = await request.get(`/canvas/agent/task/${taskId}`)
+
+        // 触发进度回调，更新 UI 进度条
         onProgress?.(data.progress ?? 0, data.status)
 
+        // 任务完成：解析 Promise，携带结果 URL
         if (data.status === 'success') return resolve(data)
+        // 任务失败：以错误信息拒绝 Promise
         if (data.status === 'failed')  return reject(new Error(data.error || '生成失败'))
 
+        // 任务仍在进行中（pending/running），延迟后继续轮询
         setTimeout(tick, intervalMs)
       } catch (e) {
         reject(e)
       }
     }
 
+    // 立即发起第一次轮询
     tick()
   })
 }

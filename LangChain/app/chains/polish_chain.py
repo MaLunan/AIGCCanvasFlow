@@ -37,13 +37,14 @@ def _normalize_base_url(url: str) -> str:
 
 
 @retry(
-    retry=retry_if_exception_type(RateLimitError),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(4),
-    before_sleep=before_sleep_log(logger, logging.WARNING),
-    reraise=True,
+    retry=retry_if_exception_type(RateLimitError),  # 只对限流错误重试，其他异常直接抛出
+    wait=wait_exponential(multiplier=1, min=2, max=30),  # 指数退避：2s → 4s → 8s ... 最长 30s
+    stop=stop_after_attempt(4),                          # 最多重试 4 次
+    before_sleep=before_sleep_log(logger, logging.WARNING),  # 重试前打印 WARNING 日志
+    reraise=True,   # 超过重试次数后重新抛出原始异常（而非 tenacity 包装异常）
 )
 def _invoke_with_retry(llm, messages):
+    """带限流重试的 LLM 调用，避免因瞬时 429 导致任务失败"""
     return llm.invoke(messages)
 
 
@@ -87,7 +88,7 @@ def polish_text(text: str,
 
     llm = _build_llm(api_key=api_key, base_url=base_url, model_name=model_name)
 
-    # 拆分图片上下文和文本上下文
+    # 将上下文节点按类型拆分：图片 URL 走视觉路径，普通文本附加到 system 提示
     image_items = []
     text_items = []
     for c in (context or []):
@@ -95,11 +96,11 @@ def polish_text(text: str,
         if not content:
             continue
         if _is_image_url(content):
-            image_items.append(c)
+            image_items.append(c)  # 图片节点（ImageNode 输出的 URL）
         else:
-            text_items.append(c)
+            text_items.append(c)   # 文本节点（TextNode / NoteNode 输出）
 
-    # 构建 system 消息
+    # 将文本上下文拼接到 system prompt，让模型了解整体创作背景
     system_content = _POLISH_SYSTEM
     if text_items:
         hints = "\n".join(
@@ -109,17 +110,19 @@ def polish_text(text: str,
         system_content += f"\n\n参考上下文：\n{hints}"
 
     if image_items:
-        # 视觉路径：将图片转为 base64 内嵌到 human 消息
+        # ── 视觉路径：构建多模态 HumanMessage（text + image_url 数组）──────────
+        # OpenAI Vision API 要求 content 为列表，每个元素是 {type, text/image_url}
         human_parts: list = [{"type": "text", "text": text}]
         for img in image_items:
             try:
+                # 将图片下载并转为 base64，内嵌到消息中（避免模型无法访问内网 URL）
                 b64, mime = _fetch_image_as_base64(img["content"])
                 human_parts.append({
                     "type": "image_url",
                     "image_url": {"url": f"data:{mime};base64,{b64}"},
                 })
             except Exception as e:
-                # 图片下载失败时降级为文字说明
+                # 图片下载失败时降级为文字说明，不中断整体流程
                 human_parts.append({
                     "type": "text",
                     "text": f"[图片获取失败: {img.get('label', '')}，错误: {e}]",
@@ -133,6 +136,7 @@ def polish_text(text: str,
             result = _invoke_with_retry(llm, messages)
         except Exception as e:
             err = str(e)
+            # 检测模型不支持视觉输入的错误（如纯文本模型收到 image_url 会报错）
             if 'image_url' in err or 'image' in err.lower():
                 raise ValueError(
                     f"当前模型「{model_name}」不支持图片输入，"
@@ -140,7 +144,7 @@ def polish_text(text: str,
                 ) from e
             raise
     else:
-        # 纯文本路径
+        # ── 纯文本路径：简单 system + human 消息结构 ─────────────────────────────
         messages = [
             SystemMessage(content=system_content),
             HumanMessage(content=text),

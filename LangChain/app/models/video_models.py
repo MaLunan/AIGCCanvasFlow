@@ -25,13 +25,16 @@ class KlingVideoModel(BaseVideoModel):
     """可灵文字生视频 & 图生视频"""
 
     def _jwt_token(self) -> str:
-        """生成可灵 JWT"""
+        """
+        生成可灵 API 鉴权 JWT（每次请求前实时生成，有效期 30 分钟）
+        iss: access_key 作为签发者；exp: 30min 后过期；nbf: 5s 前即可生效（容忍时钟偏差）
+        """
         import jwt  # PyJWT
 
         payload = {
             "iss": settings.kling_access_key,
-            "exp": int(time.time()) + 1800,
-            "nbf": int(time.time()) - 5,
+            "exp": int(time.time()) + 1800,  # 30 分钟有效期
+            "nbf": int(time.time()) - 5,     # 5 秒容错（防止服务器时钟偏差导致 not-before 失败）
         }
         return jwt.encode(payload, settings.kling_secret_key, algorithm="HS256")
 
@@ -98,16 +101,19 @@ class KlingVideoModel(BaseVideoModel):
         )
         resp.raise_for_status()
         data = resp.json()["data"]
+        # 将可灵平台状态映射为内部统一状态（processing/succeeded/failed）
         status_map = {
-            "submitted": "processing",
-            "processing": "processing",
-            "succeed":    "succeeded",
+            "submitted": "processing",  # 已提交，等待处理
+            "processing": "processing", # 处理中
+            "succeed":    "succeeded",  # 注意：可灵用 "succeed"（非 "succeeded"）
             "failed":     "failed",
         }
+        # 从 task_result.videos 数组取第一个视频的 URL
         works = data.get("task_result", {}).get("videos", [])
         result_url = works[0]["url"] if works else None
         return {
             "status": status_map.get(data["task_status"], "processing"),
+            # 进度：处理中暂估 50%，成功为 100%，其余为 0
             "progress": 50 if data["task_status"] == "processing" else (100 if data["task_status"] == "succeed" else 0),
             "result_url": result_url,
             "error": data.get("task_status_msg"),
@@ -116,13 +122,14 @@ class KlingVideoModel(BaseVideoModel):
 
 # ─── 万象 Wan（DashScope）─────────────────────────────────────────────────────
 class WanVideoModel(BaseVideoModel):
+    """阿里云通义万象视频生成模型（wanx2.1 系列）"""
     BASE_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation"
 
     def _headers(self) -> dict:
         return {
             "Authorization": f"Bearer {settings.dashscope_api_key}",
             "Content-Type": "application/json",
-            "X-DashScope-Async": "enable",
+            "X-DashScope-Async": "enable",  # 启用异步模式（否则接口会同步阻塞等待）
         }
 
     def submit_t2v(self, prompt: str, negative_prompt: str = "",
@@ -163,6 +170,7 @@ class WanVideoModel(BaseVideoModel):
         return self.submit_i2v(**kwargs)
 
     def query(self, platform_task_id: str) -> dict:
+        # DashScope 任务查询使用独立的通用任务 API（非视频专属）
         resp = httpx.get(
             f"https://dashscope.aliyuncs.com/api/v1/tasks/{platform_task_id}",
             headers={"Authorization": f"Bearer {settings.dashscope_api_key}"},
@@ -170,6 +178,7 @@ class WanVideoModel(BaseVideoModel):
         )
         resp.raise_for_status()
         output = resp.json()["output"]
+        # 将 DashScope 全大写状态映射为内部状态
         status_map = {
             "PENDING": "processing",
             "RUNNING": "processing",
@@ -178,6 +187,7 @@ class WanVideoModel(BaseVideoModel):
         }
         return {
             "status": status_map.get(output["task_status"], "processing"),
+            # task_metrics.SUCCEEDED 为已完成的子任务数（0 或 1），乘以 10 作为粗略进度
             "progress": output.get("task_metrics", {}).get("SUCCEEDED", 0) * 10,
             "result_url": output.get("video_url"),
             "error": output.get("message"),
@@ -219,7 +229,7 @@ class MiniMaxVideoModel(BaseVideoModel):
         return {
             "status": status_map.get(data["status"], "processing"),
             "progress": 50 if data["status"] == "Processing" else (100 if data["status"] == "Success" else 0),
-            "result_url": data.get("file_id"),  # 需要再调下载接口
+            "result_url": data.get("file_id"),  # MiniMax 返回 file_id，需另调下载接口获取实际 URL
             "error": data.get("base_resp", {}).get("status_msg"),
         }
 
@@ -233,6 +243,7 @@ _VIDEO_REGISTRY = {
 
 
 def get_video_model(model_name: str) -> BaseVideoModel:
+    """工厂函数：根据 model_name 字符串实例化对应的视频模型适配器"""
     cls = _VIDEO_REGISTRY.get(model_name)
     if not cls:
         raise ValueError(f"不支持的视频模型: {model_name}，可选: {list(_VIDEO_REGISTRY.keys())}")

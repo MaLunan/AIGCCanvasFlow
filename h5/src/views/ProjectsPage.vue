@@ -1,39 +1,48 @@
 <script setup>
+// 项目列表页：展示用户所有项目，支持新建、重命名、删除操作
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import { storeToRefs } from 'pinia'
 import AppNavbar from '../components/AppNavbar.vue'
 
-const router = useRouter()
+const router       = useRouter()
 const projectStore = useProjectStore()
 const { projects, loading } = storeToRefs(projectStore)
 
+// 页面挂载后加载项目列表
 onMounted(() => projectStore.fetchProjects())
 
-// ─── Create ──────────────────────────────────────────────────────────────────
-const showCreate = ref(false)
-const newName = ref('')
+// ─── 新建项目 ─────────────────────────────────────────────────────────────────
+const showCreate  = ref(false)  // 控制新建弹窗
+const newName     = ref('')
 const createError = ref('')
-const creating = ref(false)
+const creating    = ref(false)
+
+/** 打开新建弹窗，自动聚焦输入框 */
 function openCreate() {
-  newName.value = ''
+  newName.value     = ''
   createError.value = ''
-  showCreate.value = true
+  showCreate.value  = true
+  // nextTick 不够稳定，用 setTimeout 兜底确保 DOM 已渲染
   setTimeout(() => document.getElementById('new-project-input')?.focus(), 50)
 }
+
+/** 确认新建：前端校验重名 → 创建 → 直接进入画布 */
 async function confirmCreate() {
   const name = newName.value.trim() || '未命名项目'
+  // 前端重名校验（本地缓存数据中检查）
   const duplicate = projects.value.some((p) => p.name === name)
   if (duplicate) {
     createError.value = `「${name}」已存在，请使用其他名称`
     return
   }
   createError.value = ''
-  creating.value = true
+  creating.value    = true
   try {
-    const project = await projectStore.createProject(name)
-    showCreate.value = false
+    const project     = await projectStore.createProject(name)
+    showCreate.value  = false
+    // 创建后直接进入画布，传入 projectId 供 FlowCanvas 加载
     router.push({ path: '/canvas', query: { projectId: project.id } })
   } catch (e) {
     createError.value = e.message || '创建失败，请稍后重试'
@@ -42,52 +51,62 @@ async function confirmCreate() {
   }
 }
 
-// ─── Open ─────────────────────────────────────────────────────────────────────
+// ─── 打开项目 ─────────────────────────────────────────────────────────────────
+/** 点击项目卡片：进入画布编辑 */
 function openProject(project) {
   router.push({ path: '/canvas', query: { projectId: project.id } })
 }
 
-// ─── Rename ──────────────────────────────────────────────────────────────────
-const renamingId = ref(null)
+// ─── 重命名 ───────────────────────────────────────────────────────────────────
+const renamingId  = ref(null)  // 当前正在重命名的项目 ID
 const renameValue = ref('')
+
+/** 开始重命名：将卡片名称替换为 input（inline edit） */
 function startRename(project, e) {
-  e.stopPropagation()
-  renamingId.value = project.id
+  e.stopPropagation()  // 阻止触发卡片的 @click（openProject）
+  renamingId.value  = project.id
   renameValue.value = project.name
   setTimeout(() => document.getElementById(`rename-${project.id}`)?.select(), 50)
 }
+
+/** 确认重命名：失焦或 Enter 时触发 */
 async function commitRename(id) {
   if (renameValue.value.trim()) {
     await projectStore.renameProject(id, renameValue.value.trim())
   }
-  renamingId.value = null
+  renamingId.value = null  // 退出 inline edit 模式
 }
 
-// ─── Delete ──────────────────────────────────────────────────────────────────
-const confirmDeleteId = ref(null)
+// ─── 删除 ─────────────────────────────────────────────────────────────────────
+const confirmDeleteId = ref(null)  // 待删除项目 ID，非 null 时显示确认弹窗
+
+/** 点击删除按钮：记录待删除 ID，显示确认弹窗 */
 function askDelete(id, e) {
-  e.stopPropagation()
+  e.stopPropagation()  // 阻止触发卡片 openProject
   confirmDeleteId.value = id
 }
+
+/** 确认删除 */
 async function doDelete() {
   if (confirmDeleteId.value) {
     await projectStore.deleteProject(confirmDeleteId.value)
   }
-  confirmDeleteId.value = null
+  confirmDeleteId.value = null  // 关闭弹窗
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── 工具函数 ─────────────────────────────────────────────────────────────────
+/** 将时间戳格式化为"刚刚 / N分钟前 / N小时前 / N天前 / 具体日期"的相对时间 */
 function formatTime(ts) {
   if (!ts) return ''
   const diff = Date.now() - new Date(ts).getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return '刚刚'
+  const m    = Math.floor(diff / 60000)
+  if (m < 1)  return '刚刚'
   if (m < 60) return `${m}分钟前`
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}小时前`
   const d = Math.floor(h / 24)
-  if (d < 7) return `${d}天前`
-  return new Date(ts).toLocaleDateString('zh-CN')
+  if (d < 7)  return `${d}天前`
+  return new Date(ts).toLocaleDateString('zh-CN')  // 超过 7 天显示完整日期
 }
 </script>
 

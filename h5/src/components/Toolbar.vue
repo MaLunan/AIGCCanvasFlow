@@ -1,10 +1,13 @@
 <script setup>
+// 左侧工具栏：节点拖拽到画布、画布设置开关、快捷操作按钮
 import { useFlowStore } from '../stores/flowStore'
 import { storeToRefs } from 'pinia'
 
 const store = useFlowStore()
+// 从 store 解构响应式状态，用于双向绑定（snapEnabled/showGrid）和条件禁用
 const { snapEnabled, showGrid, selectedNodes, nodes, edges } = storeToRefs(store)
 
+// 可拖拽到画布的节点类型列表（按分类排列）
 const nodeItems = [
   { type: 'textNode',        icon: 'T',  label: '文本节点', color: '#646cff' },
   { type: 'imageUploadNode', icon: '🖼', label: '图片上传', color: '#42b883' },
@@ -14,11 +17,16 @@ const nodeItems = [
   { type: 'noteNode',        icon: '📝', label: '备注',     color: '#f5c542' },
 ]
 
+/**
+ * 拖拽开始：将节点类型写入 dataTransfer，供 FlowCanvas 的 @drop 处理器读取
+ * 使用自定义 MIME 类型 'application/vueflow' 区分其他拖拽操作
+ */
 function onDragStart(e, type) {
   e.dataTransfer.setData('application/vueflow', type)
   e.dataTransfer.effectAllowed = 'move'
 }
 
+// 向父组件（FlowCanvas）发出 fit-view 事件
 const emit = defineEmits(['fit-view'])
 </script>
 

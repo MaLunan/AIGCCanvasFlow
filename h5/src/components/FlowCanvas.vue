@@ -29,13 +29,14 @@ import VideoNode from './nodes/VideoNode.vue'
 import NoteNode  from './nodes/NoteNode.vue'
 import GroupNode from './nodes/GroupNode.vue'
 
-// Register node types (markRaw avoids reactivity overhead on components)
+// 注册节点类型：VueFlow 根据 node.type 查找对应渲染组件
+// markRaw 包裹避免 Vue 对组件对象进行深度响应式转换，提升性能
 const nodeTypes = {
   textNode:        markRaw(TextNode),
-  imageNode:       markRaw(ImageNode),  // legacy
+  imageNode:       markRaw(ImageNode),  // legacy 兼容旧项目数据
   imageUploadNode: markRaw(ImageNode),
   imageGenNode:    markRaw(ImageNode),
-  videoNode:       markRaw(VideoNode),  // legacy
+  videoNode:       markRaw(VideoNode),  // legacy 兼容旧项目数据
   videoUploadNode: markRaw(VideoNode),
   videoGenNode:    markRaw(VideoNode),
   noteNode:        markRaw(NoteNode),
@@ -48,7 +49,7 @@ const store = useFlowStore()
 const projectStore = useProjectStore()
 const { nodes, edges, snapEnabled, gridSize, showGrid } = storeToRefs(store)
 
-// 立即清空画布（setup 阶段，首次渲染前），避免显示上一个项目的残留数据
+// setup 阶段（首次渲染前）立即清空画布，防止切换项目时显示旧数据
 store.resetCanvas()
 
 // ─── Project state ────────────────────────────────────────────────────────────
@@ -286,7 +287,8 @@ function doFitView() {
   fitView({ padding: 0.15, duration: 400 })
 }
 
-// Auto-save with debounce on every canvas change
+// 自动保存：使用防抖（1.5s），节点/边变化后延迟触发保存，避免频繁请求
+// watchReady 在初始 fitView 完成后设为 true，防止加载时的数据初始化触发保存
 let watchReady = false
 let autoSaveTimer = null
 

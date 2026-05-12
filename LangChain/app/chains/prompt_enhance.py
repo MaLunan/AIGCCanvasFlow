@@ -25,6 +25,8 @@ _enhance_prompt = ChatPromptTemplate.from_messages([
     ("human", _ENHANCE_HUMAN),
 ])
 
+# 风格预设关键词表：每种风格对应一组引导性英文词，拼接到用户 prompt 后
+# 作用：在 LLM 增强提示词时提供风格方向锚点，减少歧义
 _T2I_STYLE_HINTS = {
     "realistic":   "photorealistic, ultra detailed, 8k, cinematic lighting",
     "anime":       "anime style, cel shading, vibrant colors, studio ghibli",
@@ -49,6 +51,7 @@ _T2V_ENHANCE_SYSTEM = """\
 
 
 def _build_llm() -> ChatOpenAI:
+    """构建 ChatOpenAI 实例（temperature=0.7 保证创意性但不过于随机）"""
     return ChatOpenAI(
         model=settings.openai_model,
         openai_api_key=settings.openai_api_key,
@@ -58,10 +61,15 @@ def _build_llm() -> ChatOpenAI:
 
 
 def enhance_t2i_prompt(user_input: str, style: str = "default") -> dict:
-    """增强文字生图提示词，返回 {prompt, negative_prompt}"""
+    """
+    增强文字生图提示词，返回 {prompt, negative_prompt}。
+    流程：将用户中文描述 + 风格关键词 → LangChain Chain → JSON 解析 → 英文专业提示词
+    """
     style_hint = _T2I_STYLE_HINTS.get(style, _T2I_STYLE_HINTS["default"])
+    # 将风格名和风格关键词合并，一起注入 prompt 模板
     combined_style = f"{style}, {style_hint}"
 
+    # LangChain LCEL 管道：prompt 模板 | LLM 调用 | JSON 输出解析
     chain = _enhance_prompt | _build_llm() | JsonOutputParser()
     result = chain.invoke({"user_input": user_input, "style": combined_style})
     return result

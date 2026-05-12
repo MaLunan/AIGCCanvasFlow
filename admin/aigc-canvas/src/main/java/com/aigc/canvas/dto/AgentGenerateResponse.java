@@ -3,6 +3,13 @@ package com.aigc.canvas.dto;
 import lombok.Builder;
 import lombok.Data;
 
+/**
+ * AI 生图/生视频任务响应 DTO（提交任务 和 轮询状态 复用同一结构）
+ * 提交成功：taskId 有值，status=pending，resultUrl=null
+ * 轮询中：status=processing，progress=0~100，estimatedSeconds 剩余估计秒数
+ * 完成：status=success，resultUrl 为可直接访问的媒体 URL
+ * 失败：status=failed，error 为错误描述
+ */
 @Data
 @Builder
 public class AgentGenerateResponse {

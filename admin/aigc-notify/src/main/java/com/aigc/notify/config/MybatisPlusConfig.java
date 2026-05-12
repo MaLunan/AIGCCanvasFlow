@@ -14,12 +14,18 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 
+/**
+ * aigc-notify 服务的 MyBatis-Plus 配置
+ * workerId 默认值为 3（与 aigc-canvas=1、aigc-user=2 区分），保证 ID 唯一性
+ */
 @Configuration
 public class MybatisPlusConfig {
 
+    /** worker-id 默认 3（aigc-notify） */
     @Value("${snowflake.worker-id:3}")
     private long workerId;
 
+    /** 注册 MySQL 分页插件 */
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
@@ -27,11 +33,15 @@ public class MybatisPlusConfig {
         return interceptor;
     }
 
+    /** 注册自定义时间戳 ID 生成器 */
     @Bean
     public IdentifierGenerator identifierGenerator() {
         return new TimestampIdGenerator(workerId);
     }
 
+    /**
+     * 自动填充处理器：INSERT 填充 createTime + updateTime，UPDATE 填充 updateTime
+     */
     @Component
     public static class MetaObjectFillHandler implements MetaObjectHandler {
         @Override

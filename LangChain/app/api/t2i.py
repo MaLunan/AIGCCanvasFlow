@@ -30,7 +30,13 @@ class TaskResponse(BaseModel):
 
 @router.post("/generate", response_model=TaskResponse, summary="文字生图")
 def generate(req: T2IRequest):
-    params = req.model_dump()
+    """
+    提交文字生图异步任务：
+    1. 在 Redis 中创建任务记录（status=pending）
+    2. 通过 Celery .delay() 将任务发送到 broker（异步，立即返回）
+    3. 返回 task_id，前端通过 GET /api/v1/tasks/{task_id} 轮询进度
+    """
+    params = req.model_dump()  # 将 Pydantic 模型序列化为 dict，传递给 Celery 任务
     task_id = create_task("t2i", params)
-    run_t2i.delay(task_id, params)
+    run_t2i.delay(task_id, params)  # 异步提交到 Celery，不阻塞当前请求
     return TaskResponse(task_id=task_id)

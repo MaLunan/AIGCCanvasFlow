@@ -7,6 +7,12 @@ import com.aigc.canvas.dto.UserModelLibraryVO;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 用户模型库服务接口：管理用户个人模型库（平台模型收藏 + 自定义模型）
+ * 数据存储：t_user_model_library 表
+ * API Key 在 VO 转换时脱敏（保留前4位 + "****"）
+ * 实现类：UserModelLibraryServiceImpl
+ */
 public interface UserModelLibraryService {
 
     /** 获取用户模型库列表 */

@@ -69,6 +69,7 @@ def upload_from_url(source_url: str, prefix: str = "misc", ext: Optional[str] = 
 
 
 def _guess_ext(content_type: str) -> str:
+    """根据响应 Content-Type 猜测文件扩展名；无法识别时返回 'bin'"""
     mapping = {
         "image/jpeg": "jpg",
         "image/png":  "png",
@@ -79,4 +80,4 @@ def _guess_ext(content_type: str) -> str:
     for mime, ext in mapping.items():
         if mime in content_type:
             return ext
-    return "bin"
+    return "bin"  # 无法识别的 Content-Type 使用二进制扩展名

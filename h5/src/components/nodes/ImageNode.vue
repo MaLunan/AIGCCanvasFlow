@@ -25,7 +25,8 @@ const fileInputRef = ref(null)
 const fileName = computed(() => props.data.fileName || '')
 const uploading = ref(false)
 
-// ── mode: determined by node type, not a tab ─────────────────────────────────
+// 通过 type prop 区分上传模式（imageUploadNode）和 AI 生成模式（imageGenNode）
+// ImageNode 组件复用于两种模式，通过此计算属性条件渲染不同 UI
 const isGenMode = computed(() => props.type === 'imageGenNode')
 
 // ── upload ──────────────────────────────────────────────────────────────────
@@ -90,20 +91,25 @@ watch(genModel, (val) => {
   }
 })
 
+/** AI 生图：提交异步任务 → 轮询状态 → 更新节点图片数据 */
 async function generateImage() {
   if (!genPrompt.value.trim() || generating.value || !genModel.value || !imageModels.value.length) return
   generating.value = true
   genProgress.value = 0
   genError.value = ''
   try {
+    // 收集上游上下文（如文本节点内容）作为生图参考
     const context = store.getUpstreamContext(props.id)
+    // 提交任务，后端返回 taskId 用于轮询
     const { taskId } = await submitImageGen({
       prompt: genPrompt.value,
       libraryModelId: Number(genModel.value),
       aspect: genAspect.value,
       context,
     })
+    // 轮询直到完成，回调实时更新进度条
     const result = await pollTask(taskId, (p) => { genProgress.value = p })
+    // 将生成结果写入节点 data，outputValue 同时传播到下游边
     store.updateNodeData(props.id, {
       src: result.resultUrl,
       outputValue: result.resultUrl,
