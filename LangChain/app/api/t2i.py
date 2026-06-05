@@ -21,6 +21,12 @@ class T2IRequest(BaseModel):
     height: int = Field(1024, ge=512, le=2048, description="图片高度（px）")
     num_images: int = Field(1, ge=1, le=4, description="生成数量")
     enhance_prompt: bool = Field(True, description="是否启用 LangChain 提示词增强")
+    llm_api_key: str = Field("", description="提示词增强用的 LLM API Key（空则用 .env 默认值）")
+    llm_base_url: str = Field("", description="提示词增强用的 LLM API 地址")
+    llm_model_name: str = Field("", description="提示词增强用的 LLM 模型名")
+    img_api_key: str = Field("", description="生图模型 API Key（空则用 .env 默认值）")
+    img_base_url: str = Field("", description="生图模型 API 地址")
+    img_model_name: str = Field("", description="生图模型名（如 doubao-seedream-5-0-260128）")
 
 
 class TaskResponse(BaseModel):

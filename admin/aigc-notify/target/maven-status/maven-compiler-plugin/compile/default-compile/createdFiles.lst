@@ -1,5 +1,6 @@
 com/aigc/notify/config/WebSocketConfig$2$1.class
 com/aigc/notify/entity/Message.class
+com/aigc/notify/config/MybatisPlusConfig$MetaObjectFillHandler.class
 com/aigc/notify/service/impl/MessageServiceImpl.class
 com/aigc/notify/ws/NotifyPushService.class
 com/aigc/notify/NotifyApplication.class

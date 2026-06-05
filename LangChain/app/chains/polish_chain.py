@@ -54,6 +54,8 @@ def _build_llm(api_key: str, base_url: str, model_name: str) -> ChatOpenAI:
         openai_api_key=api_key,
         openai_api_base=_normalize_base_url(base_url),
         temperature=0.7,
+        request_timeout=60,
+        max_retries=2,
     )
 
 

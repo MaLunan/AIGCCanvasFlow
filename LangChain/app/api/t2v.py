@@ -17,6 +17,9 @@ class T2VRequest(BaseModel):
     resolution: Literal["480p", "720p", "1080p"] = Field("720p", description="视频分辨率")
     aspect_ratio: Literal["16:9", "9:16", "1:1"] = Field("16:9", description="宽高比")
     enhance_prompt: bool = Field(True, description="是否启用 LangChain 提示词增强")
+    llm_api_key: str = Field("", description="提示词增强用的 LLM API Key（空则用 .env 默认值）")
+    llm_base_url: str = Field("", description="提示词增强用的 LLM API 地址")
+    llm_model_name: str = Field("", description="提示词增强用的 LLM 模型名")
 
 
 class ScriptT2VRequest(BaseModel):

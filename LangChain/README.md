@@ -190,48 +190,85 @@ Response:
 
 ---
 
-## 环境依赖
+## 快速启动
 
+### 环境要求
+
+- Python >= 3.10
+- [uv](https://docs.astral.sh/uv/) 包管理器（安装：`curl -LsSf https://astral.sh/uv/install.sh | sh`）
+- Redis（Celery 消息队列）
+
+### 启动步骤
+
+```bash
+# 1. 进入项目
+cd LangChain
+
+# 2. 创建虚拟环境
+uv venv --python 3.10
+
+# 3. 安装依赖
+uv sync
+
+# 4. 配置环境变量
+cp .env.example .env
+# 编辑 .env 填入各平台的 API Key（至少需要 OPENAI_API_KEY）
+
+# 5. 确保 Redis 已启动（默认连接 redis://localhost:6379/0）
+# brew services start redis   # macOS
+
+# 6. 启动服务（二选一）
+
+# 方式 A：两个终端分别启动
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8888   # 终端 1：API 服务
+uv run celery -A app.tasks.worker.celery_app worker --loglevel=info --concurrency=4  # 终端 2：Worker
+
+# 方式 B：一键同时启动
+uv run honcho start
 ```
-# requirements.txt（规划）
-fastapi>=0.111
-uvicorn[standard]
-langchain>=0.2
-langchain-openai
-langchain-community
-celery[redis]
-redis
-httpx
-Pillow
-python-dotenv
-boto3          # S3/MinIO 存储
-replicate      # Replicate 模型调用
-```
+
+启动后访问 **http://localhost:8000/docs** 查看 Swagger API 文档。
 
 ---
 
 ## 环境变量
 
 ```bash
-# .env.example
-OPENAI_API_KEY=
-OPENAI_BASE_URL=            # 可替换为兼容接口
+# .env（复制自 .env.example）
+# ── OpenAI ─────────────────────────────────
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o
 
-# 视频/图像模型 API
-KLING_API_KEY=
-WAN_API_KEY=
+# ── 可灵 Kling ─────────────────────────────
+KLING_ACCESS_KEY=
+KLING_SECRET_KEY=
+
+# ── 万象 Wan ───────────────────────────────
+DASHSCOPE_API_KEY=
+
+# ── Replicate ──────────────────────────────
 REPLICATE_API_TOKEN=
-RUNWAY_API_KEY=
-MINIMAX_API_KEY=
 
-# 存储
-MINIO_ENDPOINT=
+# ── Runway ─────────────────────────────────
+RUNWAY_API_KEY=
+
+# ── MiniMax ────────────────────────────────
+MINIMAX_API_KEY=
+MINIMAX_GROUP_ID=
+
+# ── 对象存储（MinIO / S3）───────────────────
+MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=
 MINIO_SECRET_KEY=
 MINIO_BUCKET=aigc-outputs
 
-# 任务队列
+# ── Redis / Celery ─────────────────────────
 REDIS_URL=redis://localhost:6379/0
+
+# ── 应用 ───────────────────────────────────
+DEBUG=false
+TASK_EXPIRE_SECONDS=86400
 ```
 
 ---

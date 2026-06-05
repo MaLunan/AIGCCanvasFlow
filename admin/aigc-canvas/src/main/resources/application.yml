@@ -60,7 +60,7 @@ snowflake:
   worker-id: 1   # 节点 ID，多实例部署时每个实例设置不同值（0-31）
 
 langchain:
-  base-url: http://localhost:8000
+  base-url: http://localhost:8888
   # 生图/生视频任务超时（毫秒）
   read-timeout: 120000
   connect-timeout: 5000

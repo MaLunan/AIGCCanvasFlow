@@ -1,25 +1,31 @@
-.PHONY: venv install dev worker
+.PHONY: venv install dev worker all sync
 
 # 创建虚拟环境
 venv:
-	python3 -m venv .venv
-	@echo "✅ 虚拟环境创建完成，运行: source .venv/bin/activate"
+	uv venv --python 3.10
+	@echo "✅ 虚拟环境创建完成"
 
-# 安装依赖（需先激活虚拟环境）
+# 安装依赖
 install:
-	pip3 install -r requirements.txt
+	uv sync
+
+# 同步依赖并锁定（生成 uv.lock）
+sync:
+	uv lock
+	uv sync
 
 # 启动 FastAPI 开发服务器
 dev:
-	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8888
 
-# 启动 Celery Worker（另开一个终端）
+# 启动 Celery Worker
 worker:
-	celery -A app.tasks.worker.celery_app worker --loglevel=info --concurrency=4
+	uv run celery -A app.tasks.worker.celery_app worker --loglevel=info --concurrency=4
 
-# 同时启动 API + Worker（需已 pip install -r requirements.txt，见 .venv/bin/honcho）
+# 同时启动 API + Worker
 all:
-	.venv/bin/honcho start
+	uv run honcho start
+
 # 本地启动 Nacos
 nacos:
 	docker run -d \

@@ -1,0 +1,9 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="NotifyApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="aigc-notify" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.aigc.notify.NotifyApplication" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

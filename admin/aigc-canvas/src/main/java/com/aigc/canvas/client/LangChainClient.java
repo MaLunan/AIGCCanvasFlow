@@ -37,7 +37,7 @@ import java.util.Map;
 public class LangChainClient {
 
     /** LangChain 服务地址（默认 localhost:8000，通过 Nacos 配置覆盖） */
-    @Value("${langchain.base-url:http://localhost:8000}")
+    @Value("${langchain.base-url:http://localhost:8888}")
     private String baseUrl;
 
     // RestTemplate 由 RestTemplateConfig 配置（含超时设置）
@@ -108,24 +108,37 @@ public class LangChainClient {
      * 提交文字生图任务，返回 LangChain task_id（异步）
      * 前端轮询 /api/v1/tasks/{taskId} 获取进度和结果
      *
-     * @param prompt  用户描述（prompt）
-     * @param lcModel LangChain 模型标识（dalle3 / flux / sdxl）
-     * @param aspect  宽高比（1:1 / 16:9 / 9:16 / 4:3 / 3:4）
+     * @param prompt       用户描述（prompt）
+     * @param lcModel      LangChain 模型标识（dalle3 / flux / sdxl）
+     * @param aspect       宽高比（1:1 / 16:9 / 9:16 / 4:3 / 3:4）
+     * @param llmApiKey    提示词增强用的 LLM API Key（可空）
+     * @param llmBaseUrl   提示词增强用的 LLM API 地址（可空）
+     * @param llmModelName 提示词增强用的 LLM 模型名（可空）
+     * @param imgApiKey    生图模型 API Key（可空）
+     * @param imgBaseUrl   生图模型 API 地址（可空）
+     * @param imgModelName 生图模型名（可空，如 doubao-seedream-5-0-260128）
      */
     @SuppressWarnings("unchecked")
-    public String submitT2I(String prompt, String lcModel, String aspect) {
+    public String submitT2I(String prompt, String lcModel, String aspect,
+                            String llmApiKey, String llmBaseUrl, String llmModelName,
+                            String imgApiKey, String imgBaseUrl, String imgModelName) {
         String url = baseUrl + "/api/v1/t2i/generate";
 
-        // 将宽高比字符串转换为像素尺寸 [width, height]
         int[] wh = aspectToSize(aspect);
         Map<String, Object> body = new HashMap<>();
         body.put("prompt", prompt);
-        body.put("model", lcModel != null ? lcModel : "flux"); // 未指定时默认使用 flux
+        body.put("model", lcModel != null ? lcModel : "flux");
         body.put("style", "default");
         body.put("width", wh[0]);
         body.put("height", wh[1]);
-        body.put("num_images", 1);        // 固定生成 1 张
-        body.put("enhance_prompt", true); // 开启 prompt 增强（LangChain 侧自动补充细节）
+        body.put("num_images", 1);
+        body.put("enhance_prompt", false);
+        body.put("llm_api_key", llmApiKey != null ? llmApiKey : "");
+        body.put("llm_base_url", llmBaseUrl != null ? llmBaseUrl : "");
+        body.put("llm_model_name", llmModelName != null ? llmModelName : "");
+        body.put("img_api_key", imgApiKey != null ? imgApiKey : "");
+        body.put("img_base_url", imgBaseUrl != null ? imgBaseUrl : "");
+        body.put("img_model_name", imgModelName != null ? imgModelName : "");
 
         try {
             log.info("[LangChain] POST {} model={} aspect={}", url, lcModel, aspect);
@@ -150,31 +163,35 @@ public class LangChainClient {
      * 提交文字生视频任务，返回 LangChain task_id（异步）
      * 对入参做合法性限制（LangChain T2V 的参数范围约束）
      *
-     * @param prompt     用户描述
-     * @param lcModel    LangChain 模型标识（kling / wan / minimax）
-     * @param duration   时长（秒），会被限制在 [3, 10] 范围内
-     * @param resolution 分辨率（480p / 720p / 1080p / 4K → 自动降级到 1080p）
-     * @param aspect     宽高比（仅支持 16:9 / 9:16 / 1:1，其他降级为 16:9）
+     * @param prompt       用户描述
+     * @param lcModel      LangChain 模型标识（kling / wan / minimax）
+     * @param duration     时长（秒），会被限制在 [3, 10] 范围内
+     * @param resolution   分辨率（480p / 720p / 1080p / 4K → 自动降级到 1080p）
+     * @param aspect       宽高比（仅支持 16:9 / 9:16 / 1:1，其他降级为 16:9）
+     * @param llmApiKey    提示词增强用的 LLM API Key（可空）
+     * @param llmBaseUrl   提示词增强用的 LLM API 地址（可空）
+     * @param llmModelName 提示词增强用的 LLM 模型名（可空）
      */
     @SuppressWarnings("unchecked")
     public String submitT2V(String prompt, String lcModel,
-                            int duration, String resolution, String aspect) {
+                            int duration, String resolution, String aspect,
+                            String llmApiKey, String llmBaseUrl, String llmModelName) {
         String url = baseUrl + "/api/v1/t2v/generate";
 
-        // LangChain T2V 不支持 4K，降级为 1080p
         String safeRes = "4K".equalsIgnoreCase(resolution) ? "1080p" : resolution;
-        // LangChain T2V duration 范围 3~10 秒，超出则截断
         int safeDur = Math.max(3, Math.min(10, duration));
-        // LangChain T2V 宽高比只支持 16:9 / 9:16 / 1:1，其他降级为 16:9
         String safeAspect = List.of("16:9", "9:16", "1:1").contains(aspect) ? aspect : "16:9";
 
         Map<String, Object> body = new HashMap<>();
         body.put("prompt", prompt);
-        body.put("model", lcModel != null ? lcModel : "kling"); // 未指定时默认 kling
+        body.put("model", lcModel != null ? lcModel : "kling");
         body.put("duration", safeDur);
         body.put("resolution", safeRes);
         body.put("aspect_ratio", safeAspect);
-        body.put("enhance_prompt", true);
+        body.put("enhance_prompt", false);
+        body.put("llm_api_key", llmApiKey != null ? llmApiKey : "");
+        body.put("llm_base_url", llmBaseUrl != null ? llmBaseUrl : "");
+        body.put("llm_model_name", llmModelName != null ? llmModelName : "");
 
         try {
             log.info("[LangChain] POST {} model={} dur={}s res={}", url, lcModel, safeDur, safeRes);
@@ -205,7 +222,12 @@ public class LangChainClient {
         try {
             ResponseEntity<Map> resp = restTemplate.getForEntity(url, Map.class);
             if (resp.getBody() == null) throw new BusinessException(500, "任务查询返回数据异常");
-            return resp.getBody();
+            Map<String, Object> body = resp.getBody();
+            Object resultUrl = body.get("result_url");
+            if (resultUrl instanceof String urlValue && urlValue.startsWith("/outputs/")) {
+                body.put("result_url", baseUrl + urlValue);
+            }
+            return body;
         } catch (HttpClientErrorException e) {
             String detail = extractDetail(e);
             log.warn("[LangChain] queryTask({}) 4xx: {}", taskId, detail);

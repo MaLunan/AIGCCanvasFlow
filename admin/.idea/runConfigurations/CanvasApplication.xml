@@ -1,0 +1,9 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="CanvasApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="aigc-canvas" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.aigc.canvas.CanvasApplication" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

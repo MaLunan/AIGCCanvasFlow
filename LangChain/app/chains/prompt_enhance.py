@@ -50,36 +50,59 @@ _T2V_ENHANCE_SYSTEM = """\
 """
 
 
-def _build_llm() -> ChatOpenAI:
-    """构建 ChatOpenAI 实例（temperature=0.7 保证创意性但不过于随机）"""
+_UNSUPPORTED_CHAT_MODEL_KEYWORDS = (
+    "seedream",
+    "dall-e",
+    "dalle",
+    "flux",
+    "sdxl",
+    "stable-diffusion",
+    "kling",
+    "wanx",
+    "minimax",
+)
+
+
+def _looks_like_generation_model(model_name: str) -> bool:
+    normalized = (model_name or "").lower()
+    return any(keyword in normalized for keyword in _UNSUPPORTED_CHAT_MODEL_KEYWORDS)
+
+
+def _build_llm(api_key: str = "", base_url: str = "", model_name: str = "") -> ChatOpenAI:
+    """构建 ChatOpenAI 实例（优先用传入参数，fallback 到 .env 配置）"""
+    selected_model = model_name or settings.openai_model or "gpt-4o"
+    if _looks_like_generation_model(selected_model):
+        raise ValueError(
+            f"提示词增强需要文本/聊天模型，当前模型 [{selected_model}] 是图像或视频生成模型；"
+            "请把它填到 img_model_name，llm_model_name 留空或改为 doubao-pro / gpt-4o 等聊天模型。"
+        )
     return ChatOpenAI(
-        model=settings.openai_model,
-        openai_api_key=settings.openai_api_key,
-        openai_api_base=settings.openai_base_url,
+        model=selected_model,
+        openai_api_key=api_key or settings.openai_api_key,
+        openai_api_base=base_url or settings.openai_base_url,
         temperature=0.7,
+        request_timeout=30,
+        max_retries=2,
     )
 
 
-def enhance_t2i_prompt(user_input: str, style: str = "default") -> dict:
-    """
-    增强文字生图提示词，返回 {prompt, negative_prompt}。
-    流程：将用户中文描述 + 风格关键词 → LangChain Chain → JSON 解析 → 英文专业提示词
-    """
+def enhance_t2i_prompt(user_input: str, style: str = "default",
+                       api_key: str = "", base_url: str = "", model_name: str = "") -> dict:
+    """增强文字生图提示词，返回 {prompt, negative_prompt}"""
     style_hint = _T2I_STYLE_HINTS.get(style, _T2I_STYLE_HINTS["default"])
-    # 将风格名和风格关键词合并，一起注入 prompt 模板
     combined_style = f"{style}, {style_hint}"
 
-    # LangChain LCEL 管道：prompt 模板 | LLM 调用 | JSON 输出解析
-    chain = _enhance_prompt | _build_llm() | JsonOutputParser()
+    chain = _enhance_prompt | _build_llm(api_key, base_url, model_name) | JsonOutputParser()
     result = chain.invoke({"user_input": user_input, "style": combined_style})
     return result
 
 
-def enhance_t2v_prompt(user_input: str) -> dict:
+def enhance_t2v_prompt(user_input: str,
+                       api_key: str = "", base_url: str = "", model_name: str = "") -> dict:
     """增强文字生视频提示词，返回 {prompt, negative_prompt}"""
     prompt_tpl = ChatPromptTemplate.from_messages([
         ("system", _T2V_ENHANCE_SYSTEM),
         ("human", "用户描述：{user_input}"),
     ])
-    chain = prompt_tpl | _build_llm() | JsonOutputParser()
+    chain = prompt_tpl | _build_llm(api_key, base_url, model_name) | JsonOutputParser()
     return chain.invoke({"user_input": user_input})

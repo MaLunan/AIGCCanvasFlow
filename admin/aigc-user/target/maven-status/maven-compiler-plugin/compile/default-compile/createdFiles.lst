@@ -5,5 +5,6 @@ com/aigc/user/UserApplication.class
 com/aigc/user/controller/UserController.class
 com/aigc/user/service/UserService.class
 com/aigc/user/config/MybatisPlusConfig.class
+com/aigc/user/config/MybatisPlusConfig$MetaObjectFillHandler.class
 com/aigc/user/dto/UserVO.class
 com/aigc/user/mapper/UserMapper.class

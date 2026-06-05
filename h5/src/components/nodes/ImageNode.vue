@@ -91,6 +91,17 @@ watch(genModel, (val) => {
   }
 })
 
+function applyGeneratedImage(resultUrl, taskId = props.data.genTaskId) {
+  store.updateNodeData(props.id, {
+    src: resultUrl,
+    outputValue: resultUrl,
+    genPrompt: genPrompt.value || props.data.genPrompt,
+    genModel: genModel.value || props.data.genModel,
+    genAspect: genAspect.value || props.data.genAspect,
+    genTaskId: taskId,
+  }, getNodes.value)
+}
+
 /** AI 生图：提交异步任务 → 轮询状态 → 更新节点图片数据 */
 async function generateImage() {
   if (!genPrompt.value.trim() || generating.value || !genModel.value || !imageModels.value.length) return
@@ -107,16 +118,16 @@ async function generateImage() {
       aspect: genAspect.value,
       context,
     })
-    // 轮询直到完成，回调实时更新进度条
-    const result = await pollTask(taskId, (p) => { genProgress.value = p })
-    // 将生成结果写入节点 data，outputValue 同时传播到下游边
     store.updateNodeData(props.id, {
-      src: result.resultUrl,
-      outputValue: result.resultUrl,
+      genTaskId: taskId,
       genPrompt: genPrompt.value,
       genModel: genModel.value,
       genAspect: genAspect.value,
     }, getNodes.value)
+    // 轮询直到完成，回调实时更新进度条
+    const result = await pollTask(taskId, (p) => { genProgress.value = p })
+    // 将生成结果写入节点 data，outputValue 同时传播到下游边
+    applyGeneratedImage(result.resultUrl, taskId)
   } catch (e) {
     genError.value = e?.message || '生图失败，请重试'
   } finally {

@@ -70,8 +70,14 @@ export function pollTask(taskId, onProgress, intervalMs = 2500, timeoutMs = 300_
         // 触发进度回调，更新 UI 进度条
         onProgress?.(data.progress ?? 0, data.status)
 
-        // 任务完成：解析 Promise，携带结果 URL
-        if (data.status === 'success') return resolve(data)
+        // 结果 URL 已经返回时即可渲染，避免 status 映射滞后导致 100% 继续轮询。
+        if (data.resultUrl) return resolve({ ...data, status: 'success' })
+
+        // 任务完成：解析 Promise，携带结果 URL。兼容 LangChain 原始 succeeded 状态。
+        if (data.status === 'success' || data.status === 'succeeded') {
+          if (!data.resultUrl) return reject(new Error('生成完成但未返回结果图片'))
+          return resolve({ ...data, status: 'success' })
+        }
         // 任务失败：以错误信息拒绝 Promise
         if (data.status === 'failed')  return reject(new Error(data.error || '生成失败'))
 

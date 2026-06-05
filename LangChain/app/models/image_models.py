@@ -23,39 +23,41 @@ class BaseImageModel(ABC):
         """返回生成图片的 URL 列表"""
 
 
-# ─── DALL·E 3 ─────────────────────────────────────────────────────────────────
-class DallE3Model(BaseImageModel):
-    def __init__(self):
-        # 复用 OpenAI 客户端实例，支持通过 openai_base_url 指向兼容代理
+# ─── OpenAI 兼容图像模型（DALL·E 3 / Seedream / 任意兼容接口）─────────────
+class OpenAIImageModel(BaseImageModel):
+    SEEDREAM_MIN_PIXELS = 3_686_400
+    SEEDREAM_DEFAULT_SIZE = "1920x1920"
+
+    def __init__(self, api_key=None, base_url=None):
         self._client = OpenAI(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
+            api_key=api_key or settings.openai_api_key,
+            base_url=base_url or settings.openai_base_url,
         )
 
     def generate(self, prompt, negative_prompt="", width=1024, height=1024,
-                 num_images=1, quality="standard", style="vivid", **kwargs) -> List[str]:
-        # DALL·E 3 只支持三种固定尺寸，不支持任意分辨率；不匹配则默认 1024×1024
-        size_map = {
-            (1024, 1024): "1024x1024",
-            (1792, 1024): "1792x1024",  # 横版
-            (1024, 1792): "1024x1792",  # 竖版
-        }
-        size = size_map.get((width, height), "1024x1024")
+                 num_images=1, quality="standard", style="vivid",
+                 img_model_name="dall-e-3", img_size=None, **kwargs) -> List[str]:
+        size = img_size or f"{width}x{height}"
+        if self._is_seedream_model(img_model_name) and width * height < self.SEEDREAM_MIN_PIXELS:
+            size = self.SEEDREAM_DEFAULT_SIZE
 
-        # DALL·E 3 单次 API 只能生成 1 张（n=1 限制），需要循环多次获取多张
         urls = []
-        count = min(num_images, 4)  # 最多 4 张（成本控制）
+        count = min(num_images, 4)
         for _ in range(count):
             resp = self._client.images.generate(
-                model="dall-e-3",
+                model=img_model_name,
                 prompt=prompt,
                 n=1,
                 size=size,
-                quality=quality,  # standard / hd
-                style=style,      # vivid（鲜艳）/ natural（自然）
+                quality=quality,
+                style=style,
             )
             urls.append(resp.data[0].url)
         return urls
+
+    @staticmethod
+    def _is_seedream_model(model_name: str) -> bool:
+        return "seedream" in (model_name or "").lower()
 
 
 # ─── Flux（via Replicate）──────────────────────────────────────────────────────
@@ -105,15 +107,16 @@ class SDXLModel(BaseImageModel):
 
 # ─── 工厂函数 ──────────────────────────────────────────────────────────────────
 _MODEL_REGISTRY = {
-    "dalle3":  DallE3Model,
+    "dalle3":  OpenAIImageModel,
     "flux":    FluxModel,
     "sdxl":    SDXLModel,
 }
 
 
-def get_image_model(model_name: str) -> BaseImageModel:
-    """工厂函数：根据 model_name 字符串实例化对应的图像模型适配器"""
+def get_image_model(model_name: str, api_key=None, base_url=None) -> BaseImageModel:
     cls = _MODEL_REGISTRY.get(model_name)
     if not cls:
         raise ValueError(f"不支持的图像模型: {model_name}，可选: {list(_MODEL_REGISTRY.keys())}")
+    if cls == OpenAIImageModel:
+        return cls(api_key=api_key, base_url=base_url)
     return cls()
